@@ -22,47 +22,34 @@ function Get-TargetResource
     )
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
     Write-Verbose -Message "Checking the Teams Upgrade Policies"
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+                      -Platform SkypeForBusiness
 
-    try
+    $policy = Get-CsTeamsUpgradePolicy -Identity $Identity -ErrorAction SilentlyContinue
+    [array]$users = Get-CSOnlineUser | Where-Object -Filter {$_.TeamsUpgradePolicy -eq $Identity}
+
+    if ($null -eq $policy)
     {
-        $policy = Get-CsTeamsUpgradePolicy -Identity $Identity `
-            -ErrorAction SilentlyContinue
-        [array]$users = Get-CSOnlineUser | Where-Object -Filter {$_.TeamsUpgradePolicy -eq $Identity}
-
-        if ($null -eq $policy)
-        {
-            throw "No Teams Upgrade Policy with Identity {$Identity} was found"
-        }
-
-        [array]$usersList = @()
-        foreach ($user in $users)
-        {
-            $usersList += $user.UserPrincipalName
-        }
-        Write-Verbose -Message "Found Teams Upgrade Policy with Identity {$Identity}"
-        return @{
-            Identity               = $Identity
-            Users                  = $usersList
-            MigrateMeetingsToTeams = $MigrateMeetingsToTeams
-            GlobalAdminAccount     = $GlobalAdminAccount
-        }
+        throw "No Teams Upgrade Policy with Identity {$Identity} was found"
     }
-    catch
+
+    [array]$usersList = @()
+    foreach ($user in $users)
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        throw $_
+        $usersList += $user.UserPrincipalName
+    }
+    Write-Verbose -Message "Found Teams Upgrade Policy with Identity {$Identity}"
+    return @{
+        Identity               = $Identity
+        Users                  = $usersList
+        MigrateMeetingsToTeams = $MigrateMeetingsToTeams
+        GlobalAdminAccount     = $GlobalAdminAccount
     }
 }
 
@@ -89,17 +76,15 @@ function Set-TargetResource
     )
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
     Write-Verbose -Message "Updating Teams Upgrade Policy {$Identity}"
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+                      -Platform SkypeForBusiness
 
     foreach ($user in $Users)
     {
@@ -131,14 +116,12 @@ function Test-TargetResource
         $GlobalAdminAccount
     )
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
+
     Write-Verbose -Message "Testing configuration of Team Upgrade Policy {$Identity}"
 
     $CurrentValues = Get-TargetResource @PSBoundParameters
@@ -149,7 +132,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
                                                   -Source $($MyInvocation.MyCommand.Source) `
                                                   -DesiredValues $PSBoundParameters `
                                                   -ValuesToCheck $ValuesToCheck.Keys
@@ -170,15 +153,14 @@ function Export-TargetResource
         $GlobalAdminAccount
     )
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    $InformationPreference = 'Continue'
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+                      -Platform SkypeForBusiness
 
     $organization = ""
     if ($GlobalAdminAccount.UserName.Contains("@"))
@@ -186,43 +168,31 @@ function Export-TargetResource
         $organization = $GlobalAdminAccount.UserName.Split("@")[1]
     }
 
-    try
+    [array]$policies = Get-CsTeamsUpgradePolicy
+    $i = 1
+    $content = ''
+    foreach ($policy in $policies)
     {
-        [array]$policies = Get-CsTeamsUpgradePolicy -ErrorAction Stop
-        $i = 1
-        $content = ''
-        Write-Host "`r`n" -NoNewLine
-        foreach ($policy in $policies)
-        {
-            Write-Host "    |---[$i/$($policies.Count)] $($policy.Identity.Replace('Tag:', ''))" -NoNewLine
-            $params = @{
-                Identity           = $policy.Identity.Replace("Tag:", "")
-                GlobalAdminAccount = $GlobalAdminAccount
-            }
-            $result = Get-TargetResource @params
-            $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
-            $content += "        TeamsUpgradePolicy " + (New-GUID).ToString() + "`r`n"
-            $content += "        {`r`n"
-            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
-            $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
-            if ($partialContent.ToLower().IndexOf($organization.ToLower()) -gt 0)
-            {
-                $partialContent = $partialContent -ireplace [regex]::Escape("@" + $organization), "@`$OrganizationName"
-            }
-            $content += $partialContent
-            $content += "        }`r`n"
-            $i++
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
+        Write-Information "    [$i/$($policies.Count)] $($policy.Identity.Replace('Tag:', ''))"
+        $params = @{
+            Identity           = $policy.Identity.Replace("Tag:", "")
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        return $content
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        TeamsUpgradePolicy " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        if ($partialContent.ToLower().IndexOf($organization.ToLower()) -gt 0)
+        {
+            $partialContent = $partialContent -ireplace [regex]::Escape("@" + $organization), "@`$OrganizationName"
+        }
+        $content += $partialContent
+        $content += "        }`r`n"
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

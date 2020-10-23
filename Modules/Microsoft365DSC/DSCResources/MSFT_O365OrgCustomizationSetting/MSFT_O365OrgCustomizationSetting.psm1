@@ -14,77 +14,40 @@ function Get-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
     $nullReturn = $PSBoundParameters
     $nullReturn.Ensure = 'Absent'
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
-    try
+    $orgConfig = Get-OrganizationConfig
+
+    if ($null -eq $orgConfig)
     {
-        $orgConfig = Get-OrganizationConfig -ErrorAction Stop
-
-        if ($null -eq $orgConfig)
-        {
-            Write-Verbose -Message "Can't find the information about the Organization Configuration."
-            return $nullReturn
-        }
-
-        if ($orgConfig.IsDehydrated -eq $false)
-        {
-            return @{
-                IsSingleInstance      = "Yes"
-                Ensure                = "Present"
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-            }
-        }
-
+        Write-Verbose -Message "Can't find the information about the Organization Configuration."
         return $nullReturn
     }
-    catch
+
+    if ($orgConfig.IsDehydrated -eq $false)
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $nullReturn
+        return @{
+            IsSingleInstance = "Yes"
+            Ensure           = "Present"
+        }
     }
+
+    return $nullReturn
 }
 
 function Set-TargetResource
@@ -102,43 +65,20 @@ function Set-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
     Write-Verbose -Message "Setting configuration of Office 365 Group $DisplayName"
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
     Enable-OrganizationCustomization
 }
@@ -159,39 +99,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration for Organization Customization."
 
@@ -200,8 +111,7 @@ function Test-TargetResource
     Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
     Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
-        -Source $($MyInvocation.MyCommand.Source) `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck @("Ensure")
 
@@ -216,73 +126,36 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    try
-    {
-        $Params = @{
-            IsSingleInstance      = 'Yes'
-            GlobalAdminAccount    = $GlobalAdminAccount
-            ApplicationId         = $ApplicationId
-            TenantId              = $TenantId
-            CertificateThumbprint = $CertificateThumbprint
-        }
-
-        $Results = Get-TargetResource @Params
-
-        $dscContent = ""
-        if ($result.Ensure -eq "Present")
-        {
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-        }
-        Write-Host $Global:M365DSCEmojiGreenCheckMark
-        return $dscContent
+    $exportParams = @{
+        IsSingleInstance   = 'Yes'
+        GlobalAdminAccount = $GlobalAdminAccount
     }
-    catch
+
+    $result = Get-TargetResource @exportParams
+    $result.GlobalAdminAccount = "`$CredsGlobaladmin"
+
+    $content = ""
+    if ($result.Ensure -eq "Present")
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
+        $content = "        O365OrgCustomizationSetting " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
     }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

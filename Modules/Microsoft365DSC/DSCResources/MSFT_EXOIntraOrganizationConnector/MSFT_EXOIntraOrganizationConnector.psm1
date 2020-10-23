@@ -25,87 +25,40 @@ function Get-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Getting configuration of IntraOrganizationConnector for $($Identity)"
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
+
+    $IntraOrganizationConnectors = Get-IntraOrganizationConnector
+
+    $IntraOrganizationConnector = $IntraOrganizationConnectors | Where-Object -FilterScript { $_.Identity -eq $Identity }
+    if ($null -eq $IntraOrganizationConnector)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "IntraOrganizationConnector $($Identity) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters
-    }
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-    try
-    {
-        $IntraOrganizationConnectors = Get-IntraOrganizationConnector -ErrorAction Stop
-
-        $IntraOrganizationConnector = $IntraOrganizationConnectors | Where-Object -FilterScript { $_.Identity -eq $Identity }
-        if ($null -eq $IntraOrganizationConnector)
-        {
-            Write-Verbose -Message "IntraOrganizationConnector $($Identity) does not exist."
-            return $nullReturn
+        $result = @{
+            Identity             = $Identity
+            DiscoveryEndpoint    = $IntraOrganizationConnector.DiscoveryEndpoint.ToString()
+            Enabled              = $IntraOrganizationConnector.Enabled
+            TargetAddressDomains = $IntraOrganizationConnector.TargetAddressDomains
+            GlobalAdminAccount   = $GlobalAdminAccount
+            Ensure               = 'Present'
         }
-        else
-        {
-            $result = @{
-                Identity             = $Identity
-                DiscoveryEndpoint    = $IntraOrganizationConnector.DiscoveryEndpoint.ToString()
-                Enabled              = $IntraOrganizationConnector.Enabled
-                TargetAddressDomains = $IntraOrganizationConnector.TargetAddressDomains
-                GlobalAdminAccount   = $GlobalAdminAccount
-                Ensure               = 'Present'
-            }
 
-            Write-Verbose -Message "Found IntraOrganizationConnector $($Identity)"
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
-        }
-    }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $nullReturn
+        Write-Verbose -Message "Found IntraOrganizationConnector $($Identity)"
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 function Set-TargetResource
@@ -135,44 +88,15 @@ function Set-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Setting configuration of IntraOrganizationConnector for $($Identity)"
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
     $IntraOrganizationConnectors = Get-IntraOrganizationConnector
     $IntraOrganizationConnector = $IntraOrganizationConnectors | Where-Object -FilterScript { $_.Identity -eq $Identity }
@@ -226,39 +150,11 @@ function Test-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
+        $GlobalAdminAccount
 
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of IntraOrganizationConnector for $($Identity)"
 
@@ -270,8 +166,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
-        -Source $($MyInvocation.MyCommand.Source) `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
 
@@ -286,89 +181,37 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
 
-    try
+    $InformationPreference = "Continue"
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline `
+        -ErrorAction SilentlyContinue
+
+    [array]$IntraOrganizationConnectors = Get-IntraOrganizationConnector
+    $content = ""
+    $i = 1
+    foreach ($IntraOrganizationConnector in $IntraOrganizationConnectors)
     {
-        [array]$IntraOrganizationConnectors = Get-IntraOrganizationConnector -ErrorAction Stop
-        $dscContent = ""
+        Write-Information "    [$i/$($IntraOrganizationConnectors.length)] $($IntraOrganizationConnector.Identity)"
 
-        if ($IntraOrganizationConnectors.Length -eq 0)
-        {
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
+        $Params = @{
+            Identity           = $IntraOrganizationConnector.Identity
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        else {
-            Write-Host "`r`n" -NoNewLine
-        }
-        $i = 1
-        foreach ($IntraOrganizationConnector in $IntraOrganizationConnectors)
-        {
-            Write-Host "    |---[$i/$($IntraOrganizationConnectors.length)] $($IntraOrganizationConnector.Identity)" -NoNewLine
 
-            $Params = @{
-                Identity              = $IntraOrganizationConnector.Identity
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-                CertificatePassword   = $CertificatePassword
-                CertificatePath       = $CertificatePath
-            }
-
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
-        }
-        return $dscContent
+        $result = Get-TargetResource @Params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        EXOIntraOrganizationConnector " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 Export-ModuleMember -Function *-TargetResource

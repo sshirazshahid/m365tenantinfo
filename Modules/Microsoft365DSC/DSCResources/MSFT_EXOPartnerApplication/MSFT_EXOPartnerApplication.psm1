@@ -34,90 +34,58 @@ function Get-TargetResource
         [System.String]
         $Ensure = 'Present',
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting Partner Application configuration for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
+
+    $AllPartnerApplications = Get-PartnerApplication
+
+    $PartnerApplication = $AllPartnerApplications | Where-Object -FilterScript { $_.Name -eq $Name }
+
+    if ($null -eq $PartnerApplication)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "Partner Application $($Name) does not exist."
+
+        $nullReturn = @{
+            Name                                = $Name
+            ApplicationIdentifier               = $ApplicationIdentifier
+            AcceptSecurityIdentifierInformation = $AcceptSecurityIdentifierInformation
+            AccountType                         = $AccountType
+            Enabled                             = $Enabled
+            LinkedAccount                       = $LinkedAccount
+            Ensure                              = 'Absent'
+            GlobalAdminAccount                  = $GlobalAdminAccount
+        }
+
+        return $nullReturn
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters
-    }
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
-
-    try
-    {
-        $AllPartnerApplications = Get-PartnerApplication -ErrorAction Stop
-
-        $PartnerApplication = $AllPartnerApplications | Where-Object -FilterScript { $_.Name -eq $Name }
-
-        if ($null -eq $PartnerApplication)
-        {
-            Write-Verbose -Message "Partner Application $($Name) does not exist."
-            return $nullReturn
+        $result = @{
+            Name                                = $PartnerApplication.Name
+            ApplicationIdentifier               = $PartnerApplication.ApplicationIdentifier
+            AcceptSecurityIdentifierInformation = $PartnerApplication.AcceptSecurityIdentifierInformation
+            AccountType                         = $PartnerApplication.AccountType
+            Enabled                             = $PartnerApplication.Enabled
+            LinkedAccount                       = $PartnerApplication.LinkedAccount
+            Ensure                              = 'Present'
+            GlobalAdminAccount                  = $GlobalAdminAccount
         }
-        else
-        {
-            $result = @{
-                Name                                = $PartnerApplication.Name
-                ApplicationIdentifier               = $PartnerApplication.ApplicationIdentifier
-                AcceptSecurityIdentifierInformation = $PartnerApplication.AcceptSecurityIdentifierInformation
-                AccountType                         = $PartnerApplication.AccountType
-                Enabled                             = $PartnerApplication.Enabled
-                LinkedAccount                       = $PartnerApplication.LinkedAccount
-                Ensure                              = 'Present'
-                GlobalAdminAccount                  = $GlobalAdminAccount
-            }
 
-            Write-Verbose -Message "Found Partner Application $($Name)"
-            return $result
-        }
-    }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $nullReturn
+        Write-Verbose -Message "Found Partner Application $($Name)"
+        return $result
     }
 }
 
@@ -156,29 +124,9 @@ function Set-TargetResource
         [System.String]
         $Ensure = 'Present',
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting Partner Application configuration for $Name"
@@ -186,17 +134,14 @@ function Set-TargetResource
     $currentPartnerApplicationConfig = Get-TargetResource @PSBoundParameters
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
     $NewPartnerApplicationParams = @{
         Name                                = $Name
@@ -278,39 +223,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = 'Present',
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing Partner Application configuration for $Name"
 
@@ -322,7 +238,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -338,90 +254,43 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
-    try
+    [array]$AllPartnerApplications = Get-PartnerApplication
+
+    $dscContent = ""
+    $i = 1
+    foreach ($PartnerApplication in $AllPartnerApplications)
     {
-        [array]$AllPartnerApplications = Get-PartnerApplication -ErrorAction Stop
+        Write-Information "    [$i/$($AllPartnerApplications.Count)] $($PartnerApplication.Name)"
 
-        $dscContent = ""
-        if ($AllPartnerApplications.Length -eq 0)
-        {
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
+        $Params = @{
+            Name               = $PartnerApplication.Name
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        else
-        {
-            Write-Host "`r`n" -NoNewLine
-        }
-        $i = 1
-        foreach ($PartnerApplication in $AllPartnerApplications)
-        {
-            Write-Host "    |---[$i/$($AllPartnerApplications.Length)] $($PartnerApplication.Name)" -NoNewLine
-
-            $Params = @{
-                Name                  = $PartnerApplication.Name
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-                CertificatePassword   = $CertificatePassword
-                CertificatePath       = $CertificatePath
-            }
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
-        }
-        return $dscContent
+        $result = Get-TargetResource @Params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content = "        EXOPartnerApplication " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $dscContent += $content
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $dscContent
 }
 
 Export-ModuleMember -Function *-TargetResource

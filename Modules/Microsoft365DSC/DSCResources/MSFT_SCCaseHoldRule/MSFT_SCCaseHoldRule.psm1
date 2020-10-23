@@ -36,61 +36,41 @@ function Get-TargetResource
 
     Write-Verbose -Message "Getting configuration of SCCaseHoldRule for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+
+    $Rules = Get-CaseHoldRule -Policy $Policy -ErrorAction 'SilentlyContinue'
+    $Rule = $Rules | Where-Object { $_.Name -eq $Name }
+
+    if ($null -eq $Rule)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "SCCaseHoldRule $($Name) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters
-    }
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-    try
-    {
-        $Rules = Get-CaseHoldRule -Policy $Policy -ErrorAction 'SilentlyContinue'
-        $Rule = $Rules | Where-Object { $_.Name -eq $Name }
+        Write-Verbose "Found existing SCCaseHoldRule $($Name)"
 
-        if ($null -eq $Rule)
-        {
-            Write-Verbose -Message "SCCaseHoldRule $($Name) does not exist."
-            return $nullReturn
+        $result = @{
+            Name               = $Rule.Name
+            Policy             = $Policy
+            Comment            = $Rule.Comment
+            Disabled           = $Rule.Disabled
+            ContentMatchQuery  = $Rule.ContentMatchQuery
+            GlobalAdminAccount = $GlobalAdminAccount
+            Ensure             = 'Present'
         }
-        else
-        {
-            Write-Verbose "Found existing SCCaseHoldRule $($Name)"
 
-            $result = @{
-                Name               = $Rule.Name
-                Policy             = $Policy
-                Comment            = $Rule.Comment
-                Disabled           = $Rule.Disabled
-                ContentMatchQuery  = $Rule.ContentMatchQuery
-                GlobalAdminAccount = $GlobalAdminAccount
-                Ensure             = 'Present'
-            }
-
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
-        }
-    }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $nullReturn
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 
@@ -131,16 +111,14 @@ function Set-TargetResource
 
     Write-Verbose -Message "Setting configuration of SCCaseHoldRule for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
 
     $CurrentRule = Get-TargetResource @PSBoundParameters
 
@@ -207,15 +185,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of SCCaseHoldRule for $Name"
 
@@ -225,7 +194,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -245,62 +214,48 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+
+    $InformationPreference = "Continue"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+    [array]$Rules = Get-CaseHoldRule
 
-    try
+    $dscContent = ""
+    $i = 1
+    foreach ($Rule in $Rules)
     {
-        [array]$Rules = Get-CaseHoldRule -ErrorAction Stop
-
-        $dscContent = ""
-        $i = 1
-        Write-Host "`r`n" -NoNewLine
-        foreach ($Rule in $Rules)
+        Write-Information "    [$i/$($Rules.Count)] $($Rule.Name)"
+        try
         {
-            Write-Host "    |---[$i/$($Rules.Count)] $($Rule.Name)" -NoNewLine
-            try
-            {
-                $policy = Get-CaseHoldPolicy -Identity $Rule.Policy -ErrorAction Stop
+            $policy = Get-CaseHoldPolicy -Identity $Rule.Policy -ErrorAction Stop
 
-                $params = @{
-                    Name                  = $Rule.Name
-                    Policy                = $policy.Name
-                    GlobalAdminAccount    = $GlobalAdminAccount
-                }
-                $Results = Get-TargetResource @Params
-                $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                    -Results $Results
-                $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                    -ConnectionMode $ConnectionMode `
-                    -ModulePath $PSScriptRoot `
-                    -Results $Results `
-                    -GlobalAdminAccount $GlobalAdminAccount
+            $params = @{
+                Name               = $Rule.Name
+                Policy             = $policy.Name
+                GlobalAdminAccount = $GlobalAdminAccount
             }
-            catch
-            {
-                Write-Information "You are not authorized to access Case Hold Policy {$($Rule.Policy)}"
-            }
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+            $result = Get-TargetResource @params
+            $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+            $dscContent += "        SCCaseHoldRule " + (New-GUID).ToString() + "`r`n"
+            $dscContent += "        {`r`n"
+            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+            $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+            $partialContent += "        }`r`n"
+            $dscContent += $partialContent
         }
-        return $dscContent
+        catch
+        {
+            Write-Information "You are not authorized to access Case Hold Policy {$($Rule.Policy)}"
+        }
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $dscContent
 }
 
 Export-ModuleMember -Function *-TargetResource

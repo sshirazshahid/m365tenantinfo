@@ -17,17 +17,13 @@ function New-M365DSCLogEntry
 
         [Parameter()]
         [System.String]
-        $Source,
-
-        [Parameter()]
-        [System.String]
-        $TenantId
+        $Source
     )
 
     try
     {
         $VerbosePreference = 'Continue'
-        Write-Host "$($Global:M365DSCEmojiRedX)"
+        Write-Verbose -Message "Logging a new Error"
 
         #region Telemetry
         $driftedData = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
@@ -36,12 +32,6 @@ function New-M365DSCLogEntry
         $driftedData.Add("Exception", $Error.Exception.ToString())
         $driftedData.Add("CustomMessage", $Message)
         $driftedData.Add("Source", $Source)
-        $driftedData.Add("StackTrace", $Error.ScriptStackTrace)
-
-        if ($null -ne $TenantId)
-        {
-            $driftedData.Add("TenantId", $TenantId)
-        }
         Add-M365DSCTelemetryEvent -Type "Error" -Data $driftedData
         #endregion
 
@@ -57,13 +47,10 @@ function New-M365DSCLogEntry
         $LogContent += "{" + $Error.CategoryInfo.Category.ToString() + "}`r`n"
         $LogContent += $Error.Exception.ToString() + "`r`n"
         $LogContent += "`"" + $Message + "`"`r`n"
-        $LogContent += $Error.ScriptStackTrace + "`r`n"
         $LogContent += "`r`n`r`n"
 
         # Write the error content into the log file;
-        $LogFileName = Join-Path -Path (Get-Location).Path -ChildPath $LogFileName
         $LogContent | Out-File $LogFileName -Append
-        Write-Host "Error Log created at {$LogFileName}" -ForegroundColor Cyan
     }
     catch
     {
@@ -93,39 +80,37 @@ function Add-M365DSCEvent
         $EventID = 1
     )
 
-    $LogName = 'M365DSC'
+    $LogName = 'Microsoft365DSC'
 
-    try
+    if ([System.Diagnostics.EventLog]::SourceExists($Source))
     {
-        if ([System.Diagnostics.EventLog]::SourceExists($Source))
+        $sourceLogName = [System.Diagnostics.EventLog]::LogNameFromSourceName($Source, ".")
+        if ($LogName -ne $sourceLogName)
         {
-            $sourceLogName = [System.Diagnostics.EventLog]::LogNameFromSourceName($Source, ".")
-            if ($LogName -ne $sourceLogName)
-            {
-                Write-Verbose -Message "[ERROR] Specified source {$Source} already exists on log {$sourceLogName}"
-                return
-            }
+            Write-Verbose -Message "[ERROR] Specified source {$Source} already exists on log {$sourceLogName}"
+            return
+        }
+    }
+    else
+    {
+        if ([System.Diagnostics.EventLog]::Exists($LogName) -eq $false)
+        {
+            #Create event log
+            $null = New-EventLog -LogName $LogName -Source $Source
         }
         else
         {
-            if ([System.Diagnostics.EventLog]::Exists($LogName) -eq $false)
-            {
-                #Create event log
-                $null = New-EventLog -LogName $LogName -Source $Source
-            }
-            else
-            {
-                [System.Diagnostics.EventLog]::CreateEventSource($Source, $LogName)
-            }
+            [System.Diagnostics.EventLog]::CreateEventSource($Source, $LogName)
         }
+    }
 
+    try
+    {
         Write-EventLog -LogName $LogName -Source $Source `
             -EventID $EventID -Message $Message -EntryType $EntryType
     }
     catch
     {
         Write-Verbose -Message $_
-        $Message = "Could not write to event log"
-        New-M365DSCLogEntry -Error $_ -Message $Message -Source "[M365DSCLogEngine]"
     }
 }

@@ -44,19 +44,15 @@ function Get-TargetResource
     Write-Verbose -Message "Getting configuration of Teams Tenant Dial Plan"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SkypeForBusiness
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
     try
     {
         $config = Get-CsTenantDialPlan -Identity $Identity -ErrorAction 'SilentlyContinue'
@@ -64,7 +60,11 @@ function Get-TargetResource
         if ($null -eq $config)
         {
             Write-Verbose -Message "Could not find existing Dial Plan {$Identity}"
-            return $nullReturn
+            $result = @{
+                Identity              = $Identity
+                Ensure                = 'Absent'
+                GlobalAdminAccount    = $GlobalAdminAccount
+            }
         }
         else
         {
@@ -75,7 +75,7 @@ function Get-TargetResource
                 $rules = Get-M365DSCNormalizationRules -Rules $config.NormalizationRules
             }
             $result = @{
-                Identity              = $Identity.Replace("Tag:", "")
+                Identity              = $Identity.Replace("Tag", "")
                 Description           = $config.Description
                 NormalizationRules    = $rules
                 ExternalAccessPrefix  = $config.ExternalAccessPrefix
@@ -89,10 +89,7 @@ function Get-TargetResource
     }
     catch
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $_
+        throw $_
     }
 }
 
@@ -141,11 +138,9 @@ function Set-TargetResource
     Write-Verbose -Message "Setting configuration of Teams Guest Calling"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
@@ -259,15 +254,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
     Write-Verbose -Message "Testing configuration of Teams Guest Calling"
 
     $CurrentValues = Get-TargetResource @PSBoundParameters
@@ -288,7 +274,7 @@ function Test-TargetResource
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
     $ValuesToCheck.Remove("NormalizationRules") | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -307,56 +293,44 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+    $InformationPreference ='Continue'
+
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    try
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SkypeForBusiness
+    [array]$tenantDialPlans = Get-CsTenantDialPlan
+
+    $content = ''
+    $i = 1
+    foreach ($plan in $tenantDialPlans)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-            -InboundParameters $PSBoundParameters
-        [array]$tenantDialPlans = Get-CsTenantDialPlan -ErrorAction Stop
-
-        $content = ''
-        $i = 1
-        Write-Host "`r`n" -NoNewLine
-        foreach ($plan in $tenantDialPlans)
-        {
-            Write-Host "    |---[$i/$($tenantDialPlans.Count)] $($plan.Identity)" -NoNewLine
-            $params = @{
-                Identity            = $plan.Identity
-                GlobalAdminAccount  = $GlobalAdminAccount
-            }
-            $result = Get-TargetResource @params
-            $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
-
-            if ($result.NormalizationRules.Count -gt 0)
-            {
-                $result.NormalizationRules = Get-M365DSCNormalizationRulesAsString $result.NormalizationRules
-            }
-            $content += "        TeamsTenantDialPlan " + (New-GUID).ToString() + "`r`n"
-            $content += "        {`r`n"
-            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
-            $currentDSCBlock = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "NormalizationRules"
-            $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
-            $content += "        }`r`n"
-            $i++
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
+        Write-Information -MessageData "    [$i/$($tenantDialPlans.Count)] $($plan.Identity)"
+        $params = @{
+            Identity            = $plan.Identity
+            GlobalAdminAccount  = $GlobalAdminAccount
         }
-        return $content
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+
+        if ($result.NormalizationRules.Count -gt 0)
+        {
+            $result.NormalizationRules = Get-M365DSCNormalizationRulesAsString $result.NormalizationRules
+        }
+        $content += "        TeamsTenantDialPlan " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $currentDSCBlock = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "NormalizationRules"
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 
 function Get-M365DSCNormalizationRules

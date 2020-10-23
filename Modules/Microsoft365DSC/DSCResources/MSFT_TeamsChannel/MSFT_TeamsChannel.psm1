@@ -48,20 +48,24 @@ function Get-TargetResource
     Write-Verbose -Message "Getting configuration of Teams channel $DisplayName"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
     $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' -InboundParameters $PSBoundParameters
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    $nullReturn = @{
+        TeamName           = $TeamName
+        DisplayName        = $DisplayName
+        Description        = $Description
+        NewDisplayName     = $NewDisplayName
+        Ensure             = "Absent"
+        GlobalAdminAccount = $GlobalAdminAccount
+    }
     Write-Verbose -Message "Checking for existance of team channels"
+    $CurrentParameters = $PSBoundParameters
 
     try
     {
@@ -76,7 +80,7 @@ function Get-TargetResource
         }
 
         #Current channel doesnt exist and trying to rename throw an error
-        if (($null -eq $channel) -and $PSBoundParameters.ContainsKey("NewDisplayName"))
+        if (($null -eq $channel) -and $CurrentParameters.ContainsKey("NewDisplayName"))
         {
             Write-Verbose -Message "Cannot rename channel $DisplayName , doesnt exist in current Team"
             throw "Channel named $DisplayName doesn't exist in current Team"
@@ -102,9 +106,6 @@ function Get-TargetResource
     }
     catch
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
         return $nullReturn
     }
 }
@@ -158,12 +159,9 @@ function Set-TargetResource
     Write-Verbose -Message "Setting configuration of Teams channel $DisplayName"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
@@ -265,15 +263,6 @@ function Test-TargetResource
         [System.String]
         $CertificateThumbprint
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of Teams channel $DisplayName"
 
@@ -282,7 +271,7 @@ function Test-TargetResource
     Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
     Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck @("Ensure")
@@ -314,85 +303,69 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
+
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
     $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' -InboundParameters $PSBoundParameters
 
-    try
+    $teams = Get-Team
+    $j = 1
+    $content = ''
+    foreach ($team in $Teams)
     {
-        $teams = Get-Team -ErrorAction Stop
-        $j = 1
-        $content = ''
-        Write-Host "`r`n" -NoNewLine
-        foreach ($team in $Teams)
+        $channels = Get-TeamChannel -GroupId $team.GroupId
+        $i = 1
+        Write-Information "    > [$j/$($Teams.Length)] Team {$($team.DisplayName)}"
+        foreach ($channel in $channels)
         {
-            $channels = Get-TeamChannel -GroupId $team.GroupId
-            $i = 1
-            Write-Host "    |---[$j/$($Teams.Length)] Team {$($team.DisplayName)}"
-            foreach ($channel in $channels)
-            {
-                Write-Host "        |---[$i/$($channels.Length)] $($channel.DisplayName)" -NoNewLine
+            Write-Information "        - [$i/$($channels.Length)] $($channel.DisplayName)"
 
-                if ($ConnectionMode -eq 'Credential')
-                {
-                    $params = @{
-                        TeamName           = $team.DisplayName
-                        DisplayName        = $channel.DisplayName
-                        GlobalAdminAccount = $GlobalAdminAccount
-                    }
+            if ($ConnectionMode -eq 'Credential')
+            {
+                $params = @{
+                    TeamName           = $team.DisplayName
+                    DisplayName        = $channel.DisplayName
+                    GlobalAdminAccount = $GlobalAdminAccount
                 }
-                else
-                {
-                    $params = @{
-                        TeamName              = $team.DisplayName
-                        DisplayName           = $channel.DisplayName
-                        ApplicationId         = $ApplicationId
-                        TenantId              = $TenantId
-                        CertificateThumbprint = $CertificateThumbprint
-                    }
-                }
-                $result = Get-TargetResource @params
-                if ($ConnectionMode -eq 'Credential')
-                {
-                    $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
-                    $result.Remove("ApplicationId")
-                    $result.Remove("TenantId")
-                    $result.Remove("CertificateThumbprint")
-                }
-                else
-                {
-                    $result.Remove("GlobalAdminAccount")
-                }
-                $content += "        TeamsChannel " + (New-GUID).ToString() + "`r`n"
-                $content += "        {`r`n"
-                $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
-                if ($ConnectionMode -eq 'Credential')
-                {
-                    $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
-                }
-                $content += "        }`r`n"
-                $i++
-                Write-Host $Global:M365DSCEmojiGreenCheckMark
             }
-            $j++
+            else
+            {
+                $params = @{
+                    TeamName              = $team.DisplayName
+                    DisplayName           = $channel.DisplayName
+                    ApplicationId         = $ApplicationId
+                    TenantId              = $TenantId
+                    CertificateThumbprint = $CertificateThumbprint
+                }
+            }
+            $result = Get-TargetResource @params
+            if ($ConnectionMode -eq 'Credential')
+            {
+                $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+                $result.Remove("ApplicationId")
+                $result.Remove("TenantId")
+                $result.Remove("CertificateThumbprint")
+            }
+            else
+            {
+                $result.Remove("GlobalAdminAccount")
+            }
+            $content += "        TeamsChannel " + (New-GUID).ToString() + "`r`n"
+            $content += "        {`r`n"
+            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+            $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+            $content += "        }`r`n"
+            $i++
         }
-        return $content
+        $j++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

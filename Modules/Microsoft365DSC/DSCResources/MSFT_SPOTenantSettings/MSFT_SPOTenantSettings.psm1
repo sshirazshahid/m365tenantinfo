@@ -82,50 +82,47 @@ function Get-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting configuration for SPO Tenant"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PNP' -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PnP
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    $nullReturn = @{
+        IsSingleInstance                              = 'Yes'
+        MinCompatibilityLevel                         = $null
+        MaxCompatibilityLevel                         = $null
+        SearchResolveExactEmailOrUPN                  = $null
+        OfficeClientADALDisabled                      = $null
+        LegacyAuthProtocolsEnabled                    = $null
+        RequireAcceptingAccountMatchInvitedAccount    = $null
+        SignInAccelerationDomain                      = $null
+        UsePersistentCookiesForExplorerView           = $null
+        UserVoiceForFeedbackEnabled                   = $null
+        PublicCdnEnabled                              = $null
+        PublicCdnAllowedFileTypes                     = $null
+        UseFindPeopleInPeoplePicker                   = $null
+        NotificationsInSharePointEnabled              = $null
+        OwnerAnonymousNotification                    = $null
+        ApplyAppEnforcedRestrictionsToAdHocRecipients = $null
+        FilePickerExternalImageSearchEnabled          = $null
+        HideDefaultThemes                             = $null
+        GlobalAdminAccount                            = $null
+    }
 
     try
     {
-        $SPOTenantSettings = Get-PNPTenant -ErrorAction Stop
+        $SPOTenantSettings = Get-PNPTenant
 
         $CompatibilityRange = $SPOTenantSettings.CompatibilityRange.Split(',')
         $MinCompat = $null
@@ -156,11 +153,6 @@ function Get-TargetResource
             FilePickerExternalImageSearchEnabled          = $SPOTenantSettings.FilePickerExternalImageSearchEnabled
             HideDefaultThemes                             = $SPOTenantSettings.HideDefaultThemes
             GlobalAdminAccount                            = $GlobalAdminAccount
-            ApplicationId                                 = $ApplicationId
-            TenantId                                      = $TenantId
-            CertificatePassword                           = $CertificatePassword
-            CertificatePath                               = $CertificatePath
-            CertificateThumbprint                         = $CertificateThumbprint
         }
     }
     catch
@@ -169,9 +161,6 @@ function Get-TargetResource
         {
             Write-Verbose -Message "Make sure that you are connected to your SPOService"
         }
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
         return $nullReturn
     }
 }
@@ -259,54 +248,26 @@ function Set-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration for SPO Tenant"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PNP' -InboundParameters $PSBoundParameters
-
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PnP
 
     $CurrentParameters = $PSBoundParameters
-    $CurrentParameters.Remove("GlobalAdminAccount") | Out-Null
-    $CurrentParameters.Remove("IsSingleInstance") | Out-Null
-    $CurrentParameters.Remove("Ensure") | Out-Null
-    $CurrentParameters.Remove("ApplicationId") | Out-Null
-    $CurrentParameters.Remove("TenantId") | Out-Null
-    $CurrentParameters.Remove("CertificatePath") | Out-Null
-    $CurrentParameters.Remove("CertificatePassword") | Out-Null
-    $CurrentParameters.Remove("CertificateThumbprint") | Out-Null
+    $CurrentParameters.Remove("GlobalAdminAccount")
+    $CurrentParameters.Remove("IsSingleInstance")
+    $CurrentParameters.Remove("Ensure")
 
     if ($PublicCdnEnabled -eq $false)
     {
@@ -400,39 +361,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration for SPO Tenant"
     $CurrentValues = Get-TargetResource @PSBoundParameters
@@ -440,7 +372,7 @@ function Test-TargetResource
     Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
     Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck @("IsSingleInstance", `
@@ -473,81 +405,38 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PNP' `
-        -InboundParameters $PSBoundParameters
-
-    try
-    {
-        $Params = @{
-            IsSingleInstance      = 'Yes'
-            ApplicationId         = $ApplicationId
-            TenantId              = $TenantId
-            CertificatePassword   = $CertificatePassword
-            CertificatePath       = $CertificatePath
-            CertificateThumbprint = $CertificateThumbprint
-            GlobalAdminAccount    = $GlobalAdminAccount
-        }
-
-        $Results = Get-TargetResource @Params
-        if ($null -eq $Results.MaxCompatibilityLevel)
-        {
-            $Results.Remove("MaxCompatibilityLevel") | Out-Null
-        }
-        if ($null -eq $Results.MinCompatibilityLevel)
-        {
-            $Results.Remove("MinCompatibilityLevel") | Out-Null
-        }
-        $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-            -Results $Results
-        $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-            -ConnectionMode $ConnectionMode `
-            -ModulePath $PSScriptRoot `
-            -Results $Results `
-            -GlobalAdminAccount $GlobalAdminAccount
-        Write-Host $Global:M365DSCEmojiGreenCheckmark
-        return $dscContent
+    $params = @{
+        IsSingleInstance   = 'Yes'
+        GlobalAdminAccount = $GlobalAdminAccount
     }
-    catch
+    $result = Get-TargetResource @params
+    if ($null -eq $result.MaxCompatibilityLevel)
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
+        $result.Remove("MaxCompatibilityLevel")
     }
+    if ($null -eq $result.MinCompatibilityLevel)
+    {
+        $result.Remove("MinCompatibilityLevel")
+    }
+
+    $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+    $content = "        SPOTenantSettings " + (New-GUID).ToString() + "`r`n"
+    $content += "        {`r`n"
+    $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+    $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+    $content += "        }`r`n"
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

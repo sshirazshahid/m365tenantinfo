@@ -1,9 +1,11 @@
 class PlannerTaskObject
 {
+    [string]$PlanName
     [string]$PlanId
-    [string]$TaskId
     [string]$Title
+    [string]$TaskId
     [string]$Notes
+    [string]$BucketName
     [string]$BucketId
     [string]$ETag
     [string[]]$Assignments
@@ -17,125 +19,233 @@ class PlannerTaskObject
     [int]$Priority
     [string]$ConversationThreadId
     [string]$OrderHint
+    [string]$PreviewType
 
-    [string]GetTaskCategoryNameByColor([string]$ColorName)
+    [string]GetTaskCategoryNameByColor([string]$ColorName, [string]$PlanId, [System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId)
     {
-        switch($ColorName)
+        $VerbosePreference = 'Continue'
+        Write-Verbose -Message "Searching for Category Mapping for Label {$ColorName}"
+        $uri = "https://graph.microsoft.com/beta/planner/plans/$PlanId/Details"
+        $planDetails = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
+                -ApplicationId $ApplicationId `
+                -Uri $uri `
+                -Method Get
+        Write-Verbose -Message "---------> $uri"
+        Write-Verbose -Message "---------> $($planDetails | Out-String)"
+        if ($planDetails.categoryDescriptions.category1 -eq $ColorName)
         {
-            "Pink"{return "category1"}
-            "Red"{return "category2"}
-            "Yellow"{return "category3"}
-            "Green"{return "category4"}
-            "Blue"{return "category5"}
-            "Purple"{return "category6"}
+            return "category1"
+        }
+        elseif ($planDetails.categoryDescriptions.category2 -eq $ColorName)
+        {
+            return "category2"
+        }
+        elseif ($planDetails.categoryDescriptions.category3 -eq $ColorName)
+        {
+            return "category3"
+        }
+        elseif ($planDetails.categoryDescriptions.category4 -eq $ColorName)
+        {
+            return "category4"
+        }
+        elseif ($planDetails.categoryDescriptions.category5 -eq $ColorName)
+        {
+            return "category5"
+        }
+        elseif ($planDetails.categoryDescriptions.category6 -eq $ColorName)
+        {
+            return "category6"
         }
         return $null
     }
 
-    [string]GetTaskColorNameByCategory([string]$CategoryName)
+    [string]GetTaskColorNameByCategory([string]$CategoryName, [string]$PlanId, [System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId)
     {
+        $uri = "https://graph.microsoft.com/beta/planner/plans/$PlanId/Details"
+        $planDetails = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
+                -ApplicationId $ApplicationId `
+                -Uri $uri `
+                -Method Get
+        # retrieve Category Labels
+        if ($null -eq $planDetails.categoryDescriptions.category1)
+        {
+                $Category1Value = "Pink"
+        }
+        else
+        {
+            $Category1Value = $planDetails.categoryDescriptions.category1
+        }
+
+        if ($null -eq $planDetails.categoryDescriptions.category2)
+        {
+                $Category2Value = "Red"
+        }
+        else
+        {
+            $Category2Value = $planDetails.categoryDescriptions.category2
+        }
+
+        if ($null -eq $planDetails.categoryDescriptions.category3)
+        {
+                $Category3Value = "Yellow"
+        }
+        else
+        {
+            $Category3Value = $planDetails.categoryDescriptions.category3
+        }
+
+        if ($null -eq $planDetails.categoryDescriptions.category4)
+        {
+                $Category4Value = "Green"
+        }
+        else
+        {
+            $Category4Value = $planDetails.categoryDescriptions.category4
+        }
+
+        if ($null -eq $planDetails.categoryDescriptions.category5)
+        {
+                $Category5Value = "Blue"
+        }
+        else
+        {
+            $Category5Value = $planDetails.categoryDescriptions.category5
+        }
+
+        if ($null -eq $planDetails.categoryDescriptions.category6)
+        {
+                $Category6Value = "Purple"
+        }
+        else
+        {
+            $Category6Value = $planDetails.categoryDescriptions.category6
+        }
         switch($CategoryName)
         {
-            "category1"{return "Pink"}
-            "category2"{return "Red"}
-            "category3"{return "Yellow"}
-            "category4"{return "Green"}
-            "category5"{return "Blue"}
-            "category6"{return "Purple"}
+            "category1"{return $Category1Value}
+            "category2"{return $Category2Value}
+            "category3"{return $Category3Value}
+            "category4"{return $Category4Value}
+            "category5"{return $Category5Value}
+            "category6"{return $Category6Value}
         }
         return $null
     }
 
     [void]PopulateById([System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId, [string]$TaskId)
     {
-        $uri = "https://graph.microsoft.com/beta/planner/tasks/$TaskId"
-        $taskResponse = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
-            -ApplicationId $ApplicationId `
-            -Uri $uri `
-            -Method Get
-        $taskDetailsResponse = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
-            -ApplicationId $ApplicationId `
-            -Uri ($uri + "/details") `
-            -Method Get
-
-        #region Assignments
-        $assignmentsValue = @()
-        if ($null -ne $taskResponse.assignments)
+        try
         {
-            $allAssignments = $taskResponse.assignments | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
-            foreach ($assignment in $allAssignments)
-            {
-                $assignmentsValue += $assignment.Name
-            }
-        }
-        #endregion
+            $uri = "https://graph.microsoft.com/beta/planner/tasks/$TaskId"
+            $taskResponse = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
+                -ApplicationId $ApplicationId `
+                -Uri $uri `
+                -Method Get
 
-        #region Attachments
-        $attachmentsValue = @()
-        if ($null -ne $taskDetailsResponse.references)
-        {
-            $allAttachments = $taskDetailsResponse.references | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
-            foreach ($attachment in $allAttachments)
+            $taskDetailsResponse = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
+                -ApplicationId $ApplicationId `
+                -Uri ($uri + "/details") `
+                -Method Get
+
+            #region Assignments
+            $assignmentsValue = @()
+            if ($null -ne $taskResponse.assignments)
             {
-                $hashEntry = @{
-                    Uri   = $attachment.Name
-                    Alias = $taskDetailsResponse.references.($attachment.Name).alias
-                    Type  = $taskDetailsResponse.references.($attachment.Name).type
+                $allAssignments = $taskResponse.assignments | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
+                foreach ($assignment in $allAssignments)
+                {
+                    $assignmentsValue += $assignment.Name
                 }
-                $attachmentsValue += $hashEntry
-            }
-        }
-        #endregion
+           }
+                #endregion
 
-        #region Categories
-        $categoriesValue = @()
-        if ($null -ne $taskResponse.appliedCategories)
-        {
-            $allCategories = $taskResponse.appliedCategories | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
-            foreach ($category in $allCategories)
+            #region Attachments
+            $attachmentsValue = @()
+            if ($null -ne $taskDetailsResponse.references)
             {
-                $categoriesValue += $this.GetTaskColorNameByCategory($category.Name)
-            }
-        }
-        #endregion
-
-        #region Checklist
-        $checklistValue = @()
-        if ($null -ne $taskDetailsResponse.checklist)
-        {
-            $allCheckListItems = $taskDetailsResponse.checklist | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
-            foreach ($checkListItem in $allCheckListItems)
-            {
-                $hashEntry = @{
-                    Title     = $taskDetailsResponse.checklist.($checkListItem.Name).title
-                    Completed = [bool]$taskDetailsResponse.checklist.($checkListItem.Name).isChecked
+                $allAttachments = $taskDetailsResponse.references | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
+                foreach ($attachment in $allAttachments)
+                {
+                    $hashEntry = @{
+                        Uri   = $attachment.Name
+                        Alias = $taskDetailsResponse.references.($attachment.Name).alias
+                        Type  = $taskDetailsResponse.references.($attachment.Name).type
+                    }
+                    $attachmentsValue += $hashEntry
                 }
-                $checklistValue += $hashEntry
+            }
+            #endregion
+
+            #region Categories
+            $categoriesValue = @()
+            if ($null -ne $taskResponse.appliedCategories)
+            {
+                $allCategories = $taskResponse.appliedCategories | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
+                foreach ($category in $allCategories)
+                {
+                    $categoriesValue += $this.GetTaskColorNameByCategory($category.Name, $taskResponse.planId, $GlobalAdminAccount, $ApplicationId)
+                }
+            }
+            #endregion
+
+            #region Checklist
+            $checklistValue = @()
+            if ($null -ne $taskDetailsResponse.checklist)
+            {
+                $allCheckListItems = $taskDetailsResponse.checklist | gm | Where-Object -FilterScript{$_.MemberType -eq 'NoteProperty'}
+                foreach ($checkListItem in $allCheckListItems)
+                {
+                    $hashEntry = @{
+                        Title     = $taskDetailsResponse.checklist.($checkListItem.Name).title
+                        Completed = [bool]$taskDetailsResponse.checklist.($checkListItem.Name).isChecked
+                    }
+                    $checklistValue += $hashEntry
+                }
+            }
+            #endregion
+            $this.Etag                 = $taskResponse.'@odata.etag'
+            $this.TaskId               = $taskResponse.id
+            $this.Title                = $taskResponse.title
+            $this.StartDateTime        = $taskResponse.startDateTime
+            $this.ConversationThreadId = $taskResponse.conversationThreadId
+            $this.DueDateTime          = $taskResponse.dueDateTime
+            $this.CompletedDateTime    = $taskResponse.completedDateTime
+            $this.Priority             = $taskResponse.priority
+            $this.PercentComplete      = [int]$taskResponse.percentComplete
+            $this.Notes                = $taskDetailsResponse.description
+            $this.PreviewType          = $taskDetailsResponse.previewType
+            $this.Assignments          = $assignmentsValue
+            $this.Attachments          = $attachmentsValue
+            $this.Categories           = $categoriesValue
+            $this.Checklist            = $checklistValue
+        }
+        catch
+        {
+            if ($_.Exception -like '*Forbidden*')
+            {
+                Write-Warning $_.Message
+            }
+            elseif ($_ -like '*requested item is not found*')
+            {
+                return
+            }
+            else
+            {
+                Write-Host $_
+                Start-Sleep -Seconds 120
+                this.PopulateById($GlobalAdminAccount, $ApplicationId, $TaskId)
             }
         }
-        #endregion
-        $this.Etag                 = $taskResponse.'@odata.etag'
-        $this.Title                = $taskResponse.title
-        $this.StartDateTime        = $taskResponse.startDateTime
-        $this.ConversationThreadId = $taskResponse.conversationThreadId
-        $this.DueDateTime          = $taskResponse.dueDateTime
-        $this.CompletedDateTime    = $taskResponse.completedDateTime
-        $this.PlanId               = $taskResponse.planId
-        $this.TaskId               = $taskResponse.id
-        $this.BucketId             = $taskResponse.bucketId
-        $this.Priority             = $taskResponse.priority
-        $this.Notes                = $taskDetailsResponse.description
-        $this.Assignments          = $assignmentsValue
-        $this.Attachments          = $attachmentsValue
-        $this.Categories           = $categoriesValue
-        $this.Checklist            = $checklistValue
     }
-    [string]ConvertToJSONTask()
+    [string]ConvertToJSONTask([System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId)
     {
+        $VerbosePreference = 'Continue'
         $sb = [System.Text.StringBuilder]::New()
         $sb.Append("{") | Out-Null
         $sb.Append("`"planId`":`"$($this.PlanId)`"") | Out-Null
-        $sb.Append(",`"title`":`"$($this.Title)`"") | Out-Null
+        $titleValue = $this.Title | ConvertTo-Json
+
+        $sb.Append(",`"title`":$titleValue") | Out-Null
         if (-not [System.String]::IsNullOrEmpty($this.BucketId))
         {
             $sb.Append(",`"bucketId`":`"$($this.BucketId)`"") | Out-Null
@@ -143,6 +253,11 @@ class PlannerTaskObject
         if (-not [System.String]::IsNullOrEmpty($this.Priority))
         {
             $sb.Append(",`"priority`": $($this.Priority.ToString())") | Out-Null
+        }
+        Write-Verbose -Message "Value of PercentComplete in ConvertTaskToJSON = {$($this.PercentComplete)}"
+        if (-not [System.String]::IsNullOrEmpty($this.PercentComplete))
+        {
+            $sb.Append(",`"percentComplete`": $($this.PercentComplete.ToString())") | Out-Null
         }
         if (-not [System.String]::IsNullOrEmpty($this.StartDateTime))
         {
@@ -188,13 +303,15 @@ class PlannerTaskObject
                 {
                     $sb.Append(",") | Out-Null
                 }
-                $categoryName = $this.GetTaskCategoryNameByColor($category)
+                $categoryName = $this.GetTaskCategoryNameByColor($category, $this.PlanId, $GlobalAdminAccount, $ApplicationId)
                 $sb.Append("`"$categoryName`":true") | Out-Null
                 $id++
             }
             $sb.Append("}") | Out-Null
         }
         $sb.Append("}") | Out-Null
+        $VerbosePreference = "Continue"
+        Write-Verbose -Message $sb.Tostring()
         return $sb.ToString()
     }
 
@@ -202,8 +319,9 @@ class PlannerTaskObject
     {
         $sb = [System.Text.StringBuilder]::New()
         $sb.Append("{") | Out-Null
-        $sb.Append("`"description`":`"$($this.Notes)`"") | Out-Null
-
+        $notesValue = $this.Notes | ConvertTo-JSON
+        $sb.Append("`"description`":$notesValue,") | Out-Null
+        $sb.Append("`"previewType`": `"$($this.PreviewType)`"")
         if ($this.Attachments.Length -gt 0)
         {
             $sb.Append(",`"references`": {") | Out-Null
@@ -236,7 +354,7 @@ class PlannerTaskObject
                 }
                 $sb.Append("`"$((New-Guid).ToString())`": {") | Out-Null
                 $sb.Append("`"@odata.type`": `"#microsoft.graph.plannerChecklistItem`",") | Out-Null
-                $sb.Append("`"title`":`"$($checkListItem.Title)`",") | Out-Null
+                $sb.Append("`"title`":`"$($checkListItem.Title.Replace("\", "\\"))`",") | Out-Null
                 $sb.Append("`"isChecked`": $($checkListItem.Completed.ToString().Replace('`$', '').ToLower())") | Out-Null
                 $sb.Append("}") | Out-Null
                 $i++
@@ -244,13 +362,18 @@ class PlannerTaskObject
             $sb.Append("}") | Out-Null
         }
         $sb.Append("}") | Out-Null
+        $VerbosePreference = 'Continue'
+        Write-Verbose -Message "TASK DETAILS ---> $($sb.ToString())"
         return $sb.ToString()
     }
 
     [void]Create([System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId)
     {
-        $uri = "https://graph.microsoft.com/v1.0/planner/tasks"
-        $body = $this.ConvertToJSONTask()
+        $VerbosePreference = 'Continue'
+        $uri = "https://graph.microsoft.com/beta/planner/tasks"
+        $body = $this.ConvertToJSONTask($GlobalAdminAccount, $ApplicationId)
+        Write-Verbose -Message "JSON Body {$body}"
+        Write-Verbose -Message "Trying to create new Task"
         $taskResponse = Invoke-MSCloudLoginMicrosoftGraphAPI -CloudCredential $GlobalAdminAccount `
             -ApplicationId $ApplicationId `
             -Uri $uri `
@@ -258,11 +381,14 @@ class PlannerTaskObject
             -Body $body
         $this.TaskId = $taskResponse.id
         Write-Verbose -Message "New Planner Task created with Id {$($taskResponse.id)}"
-        $this.UpdateDetails($GlobalAdminAccount)
+
+        $this.UpdateDetails($GlobalAdminAccount, $ApplicationId)
     }
 
     [void]Update([System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId)
     {
+        $VerbosePreference = 'Continue'
+        Write-Verbose -Message "Trying to update existing Task"
         $uri = "https://graph.microsoft.com/beta/planner/tasks/$($this.TaskId)"
         $body = $this.ConvertToJSONTask()
         $Headers = @{}
@@ -273,10 +399,14 @@ class PlannerTaskObject
             -Method "PATCH" `
             -Body $body `
             -Headers $Headers
+
+        Write-Verbose -Message "Done updating existing Task"
     }
 
     [void]UpdateDetails([System.Management.Automation.PSCredential]$GlobalAdminAccount, [String]$ApplicationId)
     {
+        $VerbosePreference = 'Continue'
+        Write-Verbose -Message "Trying to update existing Task Details"
         $uri = "https://graph.microsoft.com/v1.0/planner/tasks/$($this.TaskId)/details"
         $body = $this.ConvertToJSONTaskDetails()
 
@@ -293,6 +423,8 @@ class PlannerTaskObject
             -Method "PATCH" `
             -Body $body `
             -Headers $Headers
+
+        Write-Verbose -Message "Done updating Task details"
     }
 
     [void]Delete([System.Management.Automation.PSCredential]$GlobalAdminAccount, [string]$ApplicationId, [string]$TaskId)

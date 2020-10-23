@@ -22,43 +22,33 @@ function Get-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting configuration for PowerApps Environment {$DisplayName}"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PowerPlatforms' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -Cloud $GlobalAdminAccount `
+        -Platform PowerPlatforms
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    $nullReturn = @{
+        DisplayName        = $DisplayName
+        Location           = $Location
+        EnvironmentSKU     = $EnvironmentSKU
+        Ensure             = 'Absent'
+        GlobalAdminAccount = $null
+    }
 
     try
     {
-        $environment = Get-AdminPowerAppEnvironment -ErrorAction Stop | Where-Object -FilterScript { $_.DisplayName -eq $DisplayName }
+        $environment = Get-AdminPowerAppEnvironment | Where-Object -FilterScript { $_.DisplayName -eq $DisplayName }
 
         if ($null -eq $environment)
         {
@@ -77,9 +67,7 @@ function Get-TargetResource
     }
     catch
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
+        Write-Verbose $_
         return $nullReturn
     }
 }
@@ -107,36 +95,21 @@ function Set-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration for PowerApps Environment {$DisplayName}"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PowerPlatforms' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PowerPlatforms
 
     $CurrentValues = Get-TargetResource @PSBoundParameters
     $CurrentParameters = $PSBoundParameters
@@ -191,31 +164,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration for PowerApps Environment {$DisplayName}"
     $CurrentValues = Get-TargetResource @PSBoundParameters
@@ -225,7 +177,7 @@ function Test-TargetResource
 
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove("GlobalAdminAccount") | Out-Null
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -241,75 +193,48 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
+
+    $InformationPreference = 'Continue'
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PowerPlatforms' `
-        -InboundParameters $PSBoundParameters
-    try
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PowerPlatforms
+
+    [array]$environments = Get-AdminPowerAppEnvironment
+    $content = ''
+    $i = 1
+
+    foreach ($environment in $environments)
     {
-        [array]$environments = Get-AdminPowerAppEnvironment -ErrorAction Stop
-        $dscContent = ''
-        $i = 1
-        Write-Host "`r`n" -NoNewLine
-        foreach ($environment in $environments)
+        Write-Information "    [$i/$($environments.Count)] $($environment.DisplayName)"
+        if ($environment.EnvironmentType -ne 'Default')
         {
-            Write-Host "    |---[$i/$($environments.Count)] $($environment.DisplayName)" -NoNewLine
-            if ($environment.EnvironmentType -ne 'Default')
-            {
-                $Params = @{
-                    DisplayName           = $environment.DisplayName
-                    Location              = $environment.Location
-                    EnvironmentSku        = $environment.EnvironmentType
-                    GlobalAdminAccount    = $GlobalAdminAccount
-                    ApplicationId         = $ApplicationId
-                    TenantId              = $TenantId
-                    CertificateThumbprint = $CertificateThumbprint
-                }
-                $Results = Get-TargetResource @Params
-                $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                    -Results $Results
-                $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                    -ConnectionMode $ConnectionMode `
-                    -ModulePath $PSScriptRoot `
-                    -Results $Results `
-                    -GlobalAdminAccount $GlobalAdminAccount
+            $params = @{
+                DisplayName        = $environment.DisplayName
+                Location           = $environment.Location
+                EnvironmentSku     = $environment.EnvironmentType
+                GlobalAdminAccount = $GlobalAdminAccount
             }
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+            $result = Get-TargetResource @params
+            $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+            $content += "        PPPowerAppsEnvironment " + (New-GUID).ToString() + "`r`n"
+            $content += "        {`r`n"
+            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+            $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+            $content += "        }`r`n"
         }
-        return $dscContent
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

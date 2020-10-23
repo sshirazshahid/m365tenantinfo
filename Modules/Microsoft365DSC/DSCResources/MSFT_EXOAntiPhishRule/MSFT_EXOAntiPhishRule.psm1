@@ -53,118 +53,78 @@ function Get-TargetResource
         [System.String[]]
         $SentToMemberOf = @(),
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting configuration of AntiPhishRule for $Identity"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
-    {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
-    }
-    else
-    {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters
-    }
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    Write-Verbose -Message "Global ExchangeOnlineSession status:"
+    Write-Verbose -Message "$( Get-PSSession -ErrorAction SilentlyContinue | Where-Object -FilterScript { $_.Name -eq 'ExchangeOnline' } | Out-String)"
+
     try
     {
-        Write-Verbose -Message "Global ExchangeOnlineSession status:"
-        Write-Verbose -Message "$( Get-PSSession -ErrorAction SilentlyContinue | Where-Object -FilterScript { $_.Name -eq 'ExchangeOnline' } | Out-String)"
-
-        try
-        {
-            $AntiPhishRules = Get-AntiPhishRule -ErrorAction SilentlyContinue
-        }
-        catch
-        {
-            New-M365DSCLogEntry -Error $_ -Message "Couldn't get AntiPhishRules" -Source $MyInvocation.MyCommand.ModuleName
-        }
-
-        if ($null -ne $AntiPhishRules)
-        {
-            $AntiPhishRule = $AntiPhishRules | Where-Object -FilterScript { $_.Identity -eq $Identity }
-            if ($null -eq $AntiPhishRule)
-            {
-                Write-Verbose -Message "AntiPhishRule $Identity does not exist."
-                return $nullReturn
-            }
-            else
-            {
-                $result = @{
-                    Identity                  = $Identity
-                    AntiPhishPolicy           = $AntiPhishRule.AntiPhishPolicy
-                    Comments                  = $AntiPhishRule.Comments
-                    Enabled                   = $AntiPhishRule.RuleEnabled
-                    ExceptIfRecipientDomainIs = $AntiPhishRule.ExceptIfRecipientDomainIs
-                    ExceptIfSentTo            = $AntiPhishRule.ExceptIfSentTo
-                    ExceptIfSentToMemberOf    = $AntiPhishRule.ExceptIfSentToMemberOf
-                    Priority                  = $AntiPhishRule.Priority
-                    RecipientDomainIs         = $AntiPhishRule.RecipientDomainIs
-                    SentTo                    = $AntiPhishRule.SentTo
-                    SentToMemberOf            = $AntiPhishRule.SentToMemberOf
-                    Ensure                    = 'Present'
-                    GlobalAdminAccount        = $GlobalAdminAccount
-                }
-                if ('Enabled' -eq $AntiPhishRule.State)
-                {
-                    # Accounts for Get-AntiPhishRule returning 'State' instead of 'Enabled' used by New/Set
-                    $result.Enabled = $true
-                }
-
-                Write-Verbose -Message "Found AntiPhishRule $Identity"
-                Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-                return $result
-            }
-        }
-        else
-        {
-            Write-Verbose -Message "AntiPhishRule $Identity does not exist."
-            return $nullReturn
-        }
+        $AntiPhishRules = Get-AntiPhishRule -ErrorAction SilentlyContinue
     }
     catch
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $nullReturn
+        New-M365DSCLogEntry -Error $_ -Message "Couldn't get AntiPhishRules" -Source $MyInvocation.MyCommand.ModuleName
+    }
+
+    if ($null -ne $AntiPhishRules)
+    {
+        $AntiPhishRule = $AntiPhishRules | Where-Object -FilterScript { $_.Identity -eq $Identity }
+        if ($null -eq $AntiPhishRule)
+        {
+            Write-Verbose -Message "AntiPhishRule $($Identity) does not exist."
+            $result = $PSBoundParameters
+            $result.Ensure = 'Absent'
+            return $result
+        }
+        else
+        {
+            $result = @{
+                Identity                  = $Identity
+                AntiPhishPolicy           = $AntiPhishRule.AntiPhishPolicy
+                Comments                  = $AntiPhishRule.Comments
+                Enabled                   = $AntiPhishRule.RuleEnabled
+                ExceptIfRecipientDomainIs = $AntiPhishRule.ExceptIfRecipientDomainIs
+                ExceptIfSentTo            = $AntiPhishRule.ExceptIfSentTo
+                ExceptIfSentToMemberOf    = $AntiPhishRule.ExceptIfSentToMemberOf
+                Priority                  = $AntiPhishRule.Priority
+                RecipientDomainIs         = $AntiPhishRule.RecipientDomainIs
+                SentTo                    = $AntiPhishRule.SentTo
+                SentToMemberOf            = $AntiPhishRule.SentToMemberOf
+                Ensure                    = 'Present'
+                GlobalAdminAccount        = $GlobalAdminAccount
+            }
+            if ('Enabled' -eq $AntiPhishRule.State)
+            {
+                # Accounts for Get-AntiPhishRule returning 'State' instead of 'Enabled' used by New/Set
+                $result.Enabled = $true
+            }
+
+            Write-Verbose -Message "Found AntiPhishRule $($Identity)"
+            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+            return $result
+        }
+    }
+    else
+    {
+        Write-Verbose -Message "AntiPhishRule $($Identity) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
 }
 
@@ -222,44 +182,21 @@ function Set-TargetResource
         [System.String[]]
         $SentToMemberOf = @(),
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration of AntiPhishRule for $Identity"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
     # Make sure that the associated Policy exists;
     $AssociatedPolicy = Get-AntiPhishPolicy -Identity $AntiPhishPolicy -ErrorAction 'SilentlyContinue'
@@ -371,39 +308,10 @@ function Test-TargetResource
         [System.String[]]
         $SentToMemberOf = @(),
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of AntiPhishRule for $Identity"
 
@@ -421,7 +329,7 @@ function Test-TargetResource
         $ValuesToCheck.Remove("Enabled") | Out-Null
     }
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -437,90 +345,43 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
+    $InformationPreference = "Continue"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline `
+        -ErrorAction SilentlyContinue
 
-    try
+    $AntiPhishRules = Get-AntiphishRule
+    $content = ""
+    $i = 1
+    foreach ($Rule in $AntiPhishRules)
     {
-        $AntiPhishRules = Get-AntiphishRule -ErrorAction Stop
-        $dscContent = ""
-        if ($AntiPhishRules.Length -eq 0)
-        {
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-        }
-        else
-        {
-            Write-Host "`r`n" -NoNewLine
-        }
-        $i = 1
-        foreach ($Rule in $AntiPhishRules)
-        {
-            Write-Host "    |---[$i/$($AntiPhishRules.Length)] $($Rule.Identity)" -NoNewLine
+        Write-Information "    [$i/$($AntiPhishRules.Length)] $($Rule.Identity)"
 
-            $Params = @{
-                Identity              = $Rule.Identity
-                AntiPhishPolicy       = $Rule.AntiPhishPolicy
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-                CertificatePassword   = $CertificatePassword
-                CertificatePath       = $CertificatePath
-            }
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+        $Params = @{
+            Identity           = $Rule.Identity
+            AntiPhishPolicy    = $Rule.AntiPhishPolicy
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        return $dscContent
+        $result = Get-TargetResource @Params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        EXOAntiPhishRule " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

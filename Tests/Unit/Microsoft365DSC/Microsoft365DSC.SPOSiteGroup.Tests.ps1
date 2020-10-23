@@ -71,6 +71,10 @@ Describe -Name $Global:DscHelper.DescribeHeader -Fixture {
                     return $null
                 }
 
+                Mock -CommandName Get-PnPGroup -MockWith {
+                    return $null
+                }
+
                 Mock -CommandName Set-PnPGroup -MockWith {
                     return $null
                 }

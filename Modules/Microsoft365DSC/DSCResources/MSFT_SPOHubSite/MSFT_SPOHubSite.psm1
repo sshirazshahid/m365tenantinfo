@@ -37,47 +37,36 @@ function Get-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting configuration for hub site collection $Url"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
-                -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PnP
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform AzureAD
+
+    $nullReturn = @{
+        Url                  = $Url
+        Title                = $null
+        Description          = $null
+        LogoUrl              = $null
+        RequiresJoinApproval = $null
+        AllowedToJoin        = $null
+        SiteDesignId         = $null
+        Ensure               = "Absent"
+        GlobalAdminAccount   = $GlobalAdminAccount
+    }
 
     try
     {
@@ -97,8 +86,7 @@ function Get-TargetResource
         else
         {
             $hubSite = Get-PnPHubSite -Identity $Url
-            $ConnectionMode = New-M365DSCConnection -Platform 'AzureAD' `
-                        -InboundParameters $PSBoundParameters
+
             $principals = @()
             foreach ($permission in $hubSite.Permissions.PrincipalName)
             {
@@ -135,27 +123,22 @@ function Get-TargetResource
             }
 
             $result = @{
-                Url                   = $Url
-                Title                 = $hubSite.Title
-                Description           = $hubSite.Description
-                LogoUrl               = $configuredLogo
-                RequiresJoinApproval  = $hubSite.RequiresJoinApproval
-                AllowedToJoin         = $principals
-                SiteDesignId          = $hubSite.SiteDesignId
-                Ensure                = "Present"
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
+                Url                  = $Url
+                Title                = $hubSite.Title
+                Description          = $hubSite.Description
+                LogoUrl              = $configuredLogo
+                RequiresJoinApproval = $hubSite.RequiresJoinApproval
+                AllowedToJoin        = $principals
+                SiteDesignId         = $hubSite.SiteDesignId
+                Ensure               = "Present"
+                GlobalAdminAccount   = $GlobalAdminAccount
             }
             return $result
         }
     }
     catch
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
+        Write-Verbose -Message "The specified Site Collection doesn't already exist."
         return $nullReturn
     }
 }
@@ -198,47 +181,24 @@ function Set-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration for hub site collection $Url"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
-                -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PnP
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'AzureAD' `
-                -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform AzureAD
 
     try
     {
@@ -455,39 +415,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration for hub site collection $Url"
 
@@ -496,7 +427,7 @@ function Test-TargetResource
     Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
     Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck @("Ensure", `
@@ -519,85 +450,62 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
+
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
-                -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform PnP
 
-    try
+    $hubSites = Get-PnPHubSite
+
+    $i = 1
+    $content = ''
+    $organization = ""
+    $principal = "" # Principal represents the "NetBios" name of the tenant (e.g. the M365DSC part of M365DSC.onmicrosoft.com)
+    if ($GlobalAdminAccount.UserName.Contains("@"))
     {
-        [array]$hubSites = Get-PnPHubSite -ErrorAction Stop
+        $organization = $GlobalAdminAccount.UserName.Split("@")[1]
 
-        $i = 1
-        Write-Host "`r`n" -NoNewLine
-
-        $dscContent = ''
-        foreach ($hub in $hubSites)
+        if ($organization.IndexOf(".") -gt 0)
         {
-            Write-Host "    [$i/$($hubSites.Length)] $($hub.SiteUrl)" -NoNewLine
-
-            $Params = @{
-                Url                   = $hub.SiteUrl
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-                GlobalAdminAccount    = $GlobalAdminAccount
-                CertificatePassword   = $CertificatePassword
-                CertificatePath       = $CertificatePath
-            }
-
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                    -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                    -ConnectionMode $ConnectionMode `
-                    -ModulePath $PSScriptRoot `
-                    -Results $Results `
-                    -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+            $principal = $organization.Split(".")[0]
         }
-        return $dscContent
     }
-    catch
+    foreach ($hub in $hubSites)
     {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
+        Write-Information "    [$i/$($hubSites.Length)] $($hub.SiteUrl)"
+        $params = @{
+            GlobalAdminAccount = $GlobalAdminAccount
+            Url                = $hub.SiteUrl
+        }
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = "`$Credsglobaladmin"
+
+        $content += "        SPOHubSite " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $partialContent = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $partialContent = Convert-DSCStringParamToVariable -DSCBlock $partialContent -ParameterName "GlobalAdminAccount"
+        if ($partialContent.ToLower().Contains($organization.ToLower()) -or `
+            $partialContent.ToLower().Contains($principal.ToLower()))
+        {
+            $partialContent = $partialContent -ireplace [regex]::Escape('https://' + $principal + '.sharepoint.com/'), "https://`$(`$OrganizationName.Split('.')[0]).sharepoint.com/"
+            $partialContent = $partialContent -ireplace [regex]::Escape("@" + $organization), "@`$(`$OrganizationName)"
+        }
+        $content += $partialContent
+        $content += "        }`r`n"
+        $i++
     }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

@@ -28,60 +28,37 @@ function Get-TargetResource
 
     Write-Verbose -Message "Getting configuration of Device Configuration Policy for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+
+    $PolicyObject = Get-DeviceConfigurationPolicy -Identity $Name -ErrorAction SilentlyContinue
+
+    if ($null -eq $PolicyObject)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "Device Configuration Policy $($Name) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters
-    }
-
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-
-    try
-    {
-        $PolicyObject = Get-DeviceConfigurationPolicy -Identity $Name `
-            -ErrorAction SilentlyContinue
-
-        if ($null -eq $PolicyObject)
-        {
-            Write-Verbose -Message "Device Configuration Policy $($Name) does not exist."
-            return $nullReturn
+        Write-Verbose "Found existing Device Configuration Policy $($Name)"
+        $result = @{
+            Ensure             = 'Present'
+            Name               = $PolicyObject.Name
+            Comment            = $PolicyObject.Comment
+            Enabled            = $PolicyObject.Enabled
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        else
-        {
-            Write-Verbose "Found existing Device Configuration Policy $($Name)"
-            $result = @{
-                Ensure             = 'Present'
-                Name               = $PolicyObject.Name
-                Comment            = $PolicyObject.Comment
-                Enabled            = $PolicyObject.Enabled
-                GlobalAdminAccount = $GlobalAdminAccount
-            }
 
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
-        }
-    }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return $nullReturn
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 
@@ -115,16 +92,14 @@ function Set-TargetResource
 
     Write-Verbose -Message "Setting configuration of Device Configuration Policy for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
 
     $CurrentPolicy = Get-TargetResource @PSBoundParameters
 
@@ -180,15 +155,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of Device Configuration Policy for $Name"
 
@@ -200,7 +166,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -220,53 +186,43 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter `
+        -ErrorAction SilentlyContinue
+    $policies = Get-DeviceConfigurationPolicy | Where-Object -FilterScript { $_.Mode -ne 'PendingDeletion' }
 
-    try
+    $totalPolicies = $policies.Length
+    if ($null -eq $totalPolicies)
     {
-        [array]$policies = Get-DeviceConfigurationPolicy -ErrorAction Stop | Where-Object -FilterScript { $_.Mode -ne 'PendingDeletion' }
-
-        $i = 1
-        $dscContent = ''
-        Write-Host "`r`n" -NoNewLine
-        foreach ($policy in $policies)
-        {
-            Write-Host "    |---[$i/$($policies.Length)] $($policy.Name)" -NoNewLine
-            $Params = @{
-                GlobalAdminAccount    = $GlobalAdminAccount
-                Name                  = $policy.Name
-            }
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                    -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                    -ConnectionMode $ConnectionMode `
-                    -ModulePath $PSScriptRoot `
-                    -Results $Results `
-                    -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+        $totalPolicies = 1
+    }
+    $i = 1
+    $content = ''
+    foreach ($policy in $policies)
+    {
+        Write-Information "    [$i/$($totalPolicies)] $($policy.Name)"
+        $params = @{
+            GlobalAdminAccount = $GlobalAdminAccount
+            Name               = $policy.Name
         }
-        return $dscContent
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        SCDeviceConfigurationPolicy " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $i++
     }
-    catch
-    {
-        Write-Verbose -Message $_
-        Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-            -EventID 1 -Source $($MyInvocation.MyCommand.Source)
-        return ""
-    }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource
