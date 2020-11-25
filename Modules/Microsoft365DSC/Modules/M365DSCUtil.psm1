@@ -1531,7 +1531,7 @@ function Get-AllSPOPackages
     $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
         -InboundParameters $PSBoundParameters
 
-    $tenantAppCatalogUrl = Get-PnPTenantAppCatalogUrl
+    $tenantAppCatalogUrl = Get-TenantAppCatalogUrl
 
     $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
         -InboundParameters $PSBoundParameters `
@@ -1541,8 +1541,8 @@ function Get-AllSPOPackages
 
     if ($null -ne $tenantAppCatalogUrl)
     {
-        $spfxFiles = Find-PnPFile -List "AppCatalog" -Match '*.sppkg'
-        $appFiles = Find-PnPFile -List "AppCatalog" -Match '*.app'
+        $spfxFiles = Find-File -List "AppCatalog" -Match '*.sppkg'
+        $appFiles = Find-File -List "AppCatalog" -Match '*.app'
 
         $allFiles = $spfxFiles + $appFiles
 

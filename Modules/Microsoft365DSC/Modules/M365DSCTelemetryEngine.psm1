@@ -5,7 +5,7 @@ function Get-ApplicationInsightsTelemetryClient
 
     if ($null -eq $Global:M365DSCTelemetryEngine)
     {
-        $AI = "$PSScriptRoot\..\Dependencies\Microsoft.ApplicationInsights.dll"
+        $AI = "$PSScriptRoot\..\Dependencies\Microsoft.ApplicationInsights.AspNetCore.dll"
         [Reflection.Assembly]::LoadFile($AI) | Out-Null
 
         $InstrumentationKey = "bc5aa204-0b1e-4499-a955-d6a639bdb4fa"
@@ -76,8 +76,6 @@ function Add-M365DSCTelemetryEvent
             $Data.Add("PSMainVersion", $PSVersionTable.PSVersion.Major.ToString() + "." + $PSVersionTable.PSVersion.Minor.ToString())
             $Data.Add("PSVersion", $PSVersionTable.PSVersion.ToString())
             $Data.Add("PSEdition", $PSVersionTable.PSEdition.ToString())
-            $Data.Add("PSBuildVersion", $PSVersionTable.BuildVersion.ToString())
-            $Data.Add("PSCLRVersion", $PSVersionTable.CLRVersion.ToString())
 
             # Capture Console/Host Information
             if ($host.Name -eq "ConsoleHost" -and $null -eq $env:WT_SESSION)

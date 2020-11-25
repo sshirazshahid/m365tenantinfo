@@ -64,6 +64,10 @@
             RequiredVersion = "2.0.1"
         },
         @{
+            ModuleName      = "Microsoft.Graph.Applications"
+            RequiredVersion = "1.1.0"
+        },
+        @{
             ModuleName      = "Microsoft.Graph.Authentication"
             RequiredVersion = "1.1.0"
         },
@@ -74,6 +78,10 @@
         @{
             ModuleName      = "Microsoft.Graph.Identity.ConditionalAccess"
             RequiredVersion = "0.9.1"
+        },
+        @{
+            ModuleName      = "Microsoft.Graph.Identity.DirectoryManagement"
+            RequiredVersion = "1.1.0"
         },
         @{
             ModuleName      = "Microsoft.Graph.Intune"
@@ -116,8 +124,8 @@
             RequiredVersion = "2.0.0.7"
         },
         @{
-            ModuleName      = "SharePointPnPPowerShellOnline"
-            RequiredVersion = "3.26.2010.0"
+            ModuleName      = "PnP.PowerShell"
+            RequiredVersion = "0.2.18"
         }
     )
 
