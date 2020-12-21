@@ -472,31 +472,6 @@ function New-M365DSCPlannerPlan
     $body.Append("{") | Out-Null
     $body.Append("`"id`": `"$PlanId`",") | Out-Null
     $body.Append("`"categoryDescriptions`": {") | Out-Null
-
-    if ([System.String]::IsNullOrEmpty($Category1))
-    {
-        $Categorie1 = "Pink"
-    }
-    if ([System.String]::IsNullOrEmpty($Category2))
-    {
-        $Categorie2 = "Red"
-    }
-    if ([System.String]::IsNullOrEmpty($Category3))
-    {
-        $Categorie3 = "Yellow"
-    }
-    if ([System.String]::IsNullOrEmpty($Category4))
-    {
-        $Categorie4 = "Green"
-    }
-    if ([System.String]::IsNullOrEmpty($Category5))
-    {
-        $Categorie5 = "Blue"
-    }
-    if ([System.String]::IsNullOrEmpty($Category6))
-    {
-        $Categorie6 = "Purple"
-    }
     $body.Append("`"category1`": `"$Category1`",") | Out-Null
     $body.Append("`"category2`": `"$Category2`",") | Out-Null
     $body.Append("`"category3`": `"$Category3`",") | Out-Null
