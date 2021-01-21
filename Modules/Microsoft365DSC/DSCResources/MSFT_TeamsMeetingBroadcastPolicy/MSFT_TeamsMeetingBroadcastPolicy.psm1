@@ -18,12 +18,12 @@ function Get-TargetResource
 
         [Parameter()]
         [System.String]
-        [ValidateSet("Everyone", "EveryoneInCompany", "InvitedUsersInCompany", "EveryoneInCompanyAndExternal", "InvitedUsersInCompanyAndExternal")]
+        [ValidateSet("Everyone","EveryoneInCompany","InvitedUsersInCompany","EveryoneInCompanyAndExternal","InvitedUsersInCompanyAndExternal")]
         $BroadcastAttendeeVisibilityMode,
 
         [Parameter()]
         [System.String]
-        [ValidateSet("AlwaysEnabled", "AlwaysDisabled", "UserOverride")]
+        [ValidateSet("AlwaysEnabled","AlwaysDisabled","UserOverride")]
         $BroadcastRecordingMode,
 
         [Parameter()]
@@ -39,23 +39,18 @@ function Get-TargetResource
     Write-Verbose -Message "Getting configuration of Teams Meeting Broadcast Policy {$Identity}"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SkypeForBusiness
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
     try
     {
-        $config = Get-CsTeamsMeetingBroadcastPolicy -Identity $Identity `
-            -ErrorAction SilentlyContinue
+        $config = Get-CsTeamsMeetingBroadcastPolicy -Identity $Identity -ErrorAction SilentlyContinue
         if ($null -ne $config)
         {
             return @{
@@ -68,31 +63,15 @@ function Get-TargetResource
                 GlobalAdminAccount              = $GlobalAdminAccount
             }
         }
-        return $nullReturn
+        return @{
+            Identity           = $Identity
+            Ensure             = 'Absent'
+            GlobalAdminAccount = $GlobalAdminAccount
+        }
     }
     catch
     {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return $nullReturn
+        throw $_
     }
 }
 
@@ -115,12 +94,12 @@ function Set-TargetResource
 
         [Parameter()]
         [System.String]
-        [ValidateSet("Everyone", "EveryoneInCompany", "InvitedUsersInCompany", "EveryoneInCompanyAndExternal", "InvitedUsersInCompanyAndExternal")]
+        [ValidateSet("Everyone","EveryoneInCompany","InvitedUsersInCompany","EveryoneInCompanyAndExternal","InvitedUsersInCompanyAndExternal")]
         $BroadcastAttendeeVisibilityMode,
 
         [Parameter()]
         [System.String]
-        [ValidateSet("AlwaysEnabled", "AlwaysDisabled", "UserOverride")]
+        [ValidateSet("AlwaysEnabled","AlwaysDisabled","UserOverride")]
         $BroadcastRecordingMode,
 
         [Parameter()]
@@ -139,7 +118,7 @@ function Set-TargetResource
     foreach ($item in $PSBoundParameters.Keys)
     {
         if (-not [System.String]::IsNullOrEmpty($PSBoundParameters.$item) -and $item -ne 'GlobalAdminAccount' `
-                -and $item -ne 'Identity' -and $item -ne 'Ensure')
+            -and $item -ne 'Identity' -and $item -ne 'Ensure')
         {
             $inputValues += $item
         }
@@ -152,16 +131,14 @@ function Set-TargetResource
     }
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SkypeForBusiness
 
     $SetParams = $PSBoundParameters
     $currentValues = Get-TargetResource @PSBoundParameters
@@ -202,12 +179,12 @@ function Test-TargetResource
 
         [Parameter()]
         [System.String]
-        [ValidateSet("Everyone", "EveryoneInCompany", "InvitedUsersInCompany", "EveryoneInCompanyAndExternal", "InvitedUsersInCompanyAndExternal")]
+        [ValidateSet("Everyone","EveryoneInCompany","InvitedUsersInCompany","EveryoneInCompanyAndExternal","InvitedUsersInCompanyAndExternal")]
         $BroadcastAttendeeVisibilityMode,
 
         [Parameter()]
         [System.String]
-        [ValidateSet("AlwaysEnabled", "AlwaysDisabled", "UserOverride")]
+        [ValidateSet("AlwaysEnabled","AlwaysDisabled","UserOverride")]
         $BroadcastRecordingMode,
 
         [Parameter()]
@@ -219,15 +196,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of Teams Meeting Broadcast policies"
 
@@ -238,7 +206,7 @@ function Test-TargetResource
 
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -258,69 +226,40 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
+
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SkypeForBusiness' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SkypeForBusiness
 
-    try
-    {
-        [array]$policies = Get-CsTeamsMeetingBroadcastPolicy -ErrorAction Stop
+    [array]$policies = Get-CsTeamsMeetingBroadcastPolicy
 
-        $i = 1
-        $content = ''
-        Write-Host "`r`n" -NoNewline
-        foreach ($policy in $policies)
-        {
-            $params = @{
-                Identity           = $policy.Identity
-                GlobalAdminAccount = $GlobalAdminAccount
-            }
-            Write-Host "    |---[$i/$($policies.Length)] $($policy.Identity)" -NoNewline
-            $result = Get-TargetResource @params
-            $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
-            $content += "        TeamsMeetingBroadcastPolicy " + (New-Guid).ToString() + "`r`n"
-            $content += "        {`r`n"
-            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
-            $partial = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
-            $content += $partial
-            $content += "        }`r`n"
-            $i++
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-        }
-        return $content
-    }
-    catch
+    $i = 1
+    $content = ''
+    foreach ($policy in $policies)
     {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
+        $params = @{
+            Identity           = $policy.Identity
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
+        Write-Information "    [$i/$($policies.Length)] $($policy.Identity)"
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        TeamsMeetingBroadcastPolicy " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $partial = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += $partial
+        $content += "        }`r`n"
+        $i++
     }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

@@ -1,5 +1,4 @@
-function Get-TargetResource
-{
+function Get-TargetResource {
     [CmdletBinding()]
     [OutputType([System.Collections.Hashtable])]
     param
@@ -23,7 +22,7 @@ function Get-TargetResource
         $MailNickName,
 
         [Parameter()]
-        [System.String[]]
+        [System.String]
         $Owner,
 
         [Parameter()]
@@ -98,86 +97,107 @@ function Get-TargetResource
 
         [Parameter()]
         [System.Boolean]
+        $Archived,
+
+        [Parameter()]
+        [System.Boolean]
         $ShowInTeamsSearchAndSuggestions,
+
+        [Parameter()]
+        [System.String]
+        $Classification,
 
         [Parameter()]
         [ValidateSet("Present", "Absent")]
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+
     Write-Verbose -Message "Getting configuration of Team $DisplayName"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    $nullReturn = @{
+        DisplayName                       = $DisplayName
+        GroupId                           = $GroupID
+        Description                       = $Description
+        Owner                             = $Owner
+        MailNickName                      = $MailNickName
+        Visibility                        = $Visibility
+        Ensure                            = "Absent"
+        AllowAddRemoveApps                = $AllowAddRemoveApps
+        AllowGiphy                        = $AllowGiphy
+        GiphyContentRating                = $GiphyContentRating
+        AllowStickersAndMemes             = $AllowStickersAndMemes
+        AllowCustomMemes                  = $AllowCustomMemes
+        AllowUserEditMessages             = $AllowUserEditMessages
+        AllowUserDeleteMessages           = $AllowUserDeleteMessages
+        AllowOwnerDeleteMessages          = $AllowOwnerDeleteMessages
+        AllowCreateUpdateRemoveConnectors = $AllowCreateUpdateRemoveConnectors
+        AllowCreateUpdateRemoveTabs       = $AllowCreateUpdateRemoveTabs
+        AllowCreateUpdateChannels         = $AllowCreateUpdateChannels
+        AllowDeleteChannels               = $AllowDeleteChannels
+        AllowTeamMentions                 = $AllowTeamMentions
+        AllowChannelMentions              = $AllowChannelMentions
+        AllowGuestCreateUpdateChannels    = $AllowGuestCreateUpdateChannels
+        AllowGuestDeleteChannels          = $AllowGuestDeleteChannels
+        ShowInTeamsSearchAndSuggestions   = $ShowInTeamsSearchAndSuggestions
+        Classification                    = $Classification
+        Archived                          = $Archived
+        GlobalAdminAccount                = $GlobalAdminAccount
+    }
 
-    Write-Verbose -Message "Checking for existence of Team $DisplayName"
+    Write-Verbose -Message "Checking for existance of Team $DisplayName"
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform MicrosoftTeams
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' -InboundParameters $PSBoundParameters
+    $CurrentParameters = $PSBoundParameters
 
-    try
-    {
+    try {
         ## will only return 1 instance
-        if ($PSBoundParameters.ContainsKey("GroupID"))
-        {
-            Write-Verbose -Message "GroupID was specified"
+        if ($CurrentParameters.ContainsKey("GroupID")) {
             $team = Get-Team -GroupId $GroupID
-            if ($null -eq $team)
-            {
+            if ($null -eq $team) {
                 Write-Verbose -Message "Teams with GroupId $($GroupID) doesn't exist"
                 return $nullReturn
             }
         }
-        else
-        {
-            Write-Verbose -Message "GroupID was NOT specified"
+        else {
             ## Can retreive multiple Teams since displayname is not unique
             $team = Get-Team -DisplayName $DisplayName
-            if ($null -eq $team)
-            {
+            if ($null -eq $team) {
                 Write-Verbose -Message "Teams with displayname $DisplayName doesn't exist"
                 return $nullReturn
             }
-            if ($team.Length -gt 1)
-            {
+            if ($team.Length -gt 1) {
                 throw "Duplicate Teams name $DisplayName exist in tenant"
             }
         }
 
-        Write-Verbose -Message "Getting Team {$DisplayName} Owners"
-        [array]$Owners = Get-TeamUser -GroupId $team.GroupId | Where-Object { $_.Role -eq "owner" }
+        $Owners = Get-TeamUser -GroupId $team.GroupId | Where-Object { $_.Role -eq "owner" }
+
+        if ($null -ne $Owners) {
+            foreach ($owner in $Owners.User) {
+                $OwnersArray = $owner.ToString()
+                break
+            }
+        }
         Write-Verbose -Message "Found Team $($team.DisplayName)."
 
-        $result = @{
+        return @{
             DisplayName                       = $team.DisplayName
             GroupID                           = $team.GroupId
             Description                       = $team.Description
-            Owner                             = $Owners[0].User.ToString()
+            Owner                             = $OwnersArray
             MailNickName                      = $team.MailNickName
             Visibility                        = $team.Visibility
             AllowAddRemoveApps                = $team.AllowAddRemoveApps
@@ -196,50 +216,20 @@ function Get-TargetResource
             AllowGuestDeleteChannels          = $team.AllowGuestDeleteChannels
             AllowCreateUpdateChannels         = $team.AllowCreateUpdateChannels
             AllowDeleteChannels               = $team.AllowDeleteChannels
+            Archived                          = $team.Archived
             ShowInTeamsSearchAndSuggestions   = $team.ShowInTeamsSearchAndSuggestions
+            Classification                    = $team.Classification
             Ensure                            = "Present"
+            GlobalAdminAccount                = $GlobalAdminAccount
         }
-
-        if ($ConnectionMode -eq "ServicePrincipal")
-        {
-            $result.Add("ApplicationId", $ApplicationId)
-            $result.Add("TenantId", $TenantId)
-            $result.Add("CertificateThumbprint", $CertificateThumbprint)
-        }
-        else
-        {
-            $result.Add("GlobalAdminAccount", $GlobalAdminAccount)
-        }
-        return $result
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
+    catch {
+        Write-Verbose "Returning empty results due to error: $_"
         return $nullReturn
     }
 }
 
-function Set-TargetResource
-{
+function Set-TargetResource {
     [CmdletBinding()]
     param
     (
@@ -262,7 +252,7 @@ function Set-TargetResource
         $MailNickName,
 
         [Parameter()]
-        [System.String[]]
+        [System.String]
         $Owner,
 
         [Parameter()]
@@ -337,26 +327,22 @@ function Set-TargetResource
 
         [Parameter()]
         [System.Boolean]
+        $Archived,
+
+        [Parameter()]
+        [System.Boolean]
         $ShowInTeamsSearchAndSuggestions,
+
+        [Parameter()]
+        [System.String]
+        $Classification,
 
         [Parameter()]
         [ValidateSet("Present", "Absent")]
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
@@ -364,107 +350,48 @@ function Set-TargetResource
     Write-Verbose -Message "Setting configuration of Team $DisplayName"
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform MicrosoftTeams
 
     $team = Get-TargetResource @PSBoundParameters
 
     $CurrentParameters = $PSBoundParameters
-    $CurrentParameters.Remove("Ensure") | Out-Null
+    $CurrentParameters.Remove("GlobalAdminAccount")
+    $CurrentParameters.Remove("Ensure")
 
-    if ($Ensure -eq "Present" -and ($team.Ensure -eq "Present"))
-    {
+    $needToUpdate = $false
+    if ($Ensure -eq "Present" -and ($team.Ensure -eq "Absent")) {
+        Write-Verbose -Message "Creating team $DisplayName"
+        Write-Verbose -Message "Creation Params: $(Convert-M365DscHashtableToString -Hashtable $CurrentParameters)"
+        New-Team -GroupId $CurrentParameters.GroupId
+        $needToUpdate = $true
+    }
+    elseif ($Ensure -eq "Absent" -and ($team.Ensure -eq "Present")) {
+        Write-Verbose -Message "Removing team $DisplayName"
+        Remove-team -GroupId $team.GroupId
+    }
+
+    if ($Ensure -eq "Present" -and $needToUpdate) {
         ## Can't pass Owner parm into set opertaion
-        if ($CurrentParameters.ContainsKey("Owner"))
-        {
+        if ($CurrentParameters.ContainsKey("Owner")) {
             $CurrentParameters.Remove("Owner") | Out-Null
         }
-        if (-not $CurrentParameters.ContainsKey("GroupID"))
-        {
-            $CurrentParameters.Add("GroupID", $team.GroupID)
+        if ($CurrentParameters.ContainsKey("Archived")) {
+            $CurrentParameters.Remove("Archived") | Out-Null
         }
-        if ($ConnectionMode -eq 'Credential')
-        {
-            $CurrentParameters.Remove("GlobalAdminAccount") | Out-Null
-        }
-        else
-        {
-            $CurrentParameters.Remove("ApplicationId") | Out-Null
-            $CurrentParameters.Remove("TenantId") | Out-Null
-            $CurrentParameters.Remove("CertificateThumbprint") | Out-Null
-        }
+        $CurrentParameters.Remove("Visibility") | Out-Null
         Set-Team @CurrentParameters
         Write-Verbose -Message "Updating team $DisplayName"
     }
-    elseif ($Ensure -eq "Present" -and ($team.Ensure -eq "Absent"))
-    {
-        ## GroupID not used on New-Team cmdlet
-        if ($CurrentParameters.ContainsKey("GroupID"))
-        {
-            $CurrentParameters.Remove("GroupID") | Out-Null
-        }
-        Write-Verbose -Message "Creating team $DisplayName"
-        if ($null -ne $Owner)
-        {
-            $CurrentParameters.Owner = ([array]$Owner[0]).ToString()
-        }
-
-        if ($ConnectionMode -eq "ServicePrincipal")
-        {
-            $ConnectionMode = New-M365DSCConnection -Platform 'AzureAD' `
-                -InboundParameters $PSBoundParameters
-            $group = New-AzureADMSGroup -DisplayName $DisplayName -GroupTypes "Unified" -MailEnabled $true -SecurityEnabled $true -MailNickname $MailNickName
-            $currentOwner = (($CurrentParameters.Owner)[0])
-
-            Write-Verbose -Message "Retrieving Group Owner {$currentOwner}"
-            $ownerUser = Get-AzureADUser -SearchString $currentOwner
-
-            Write-Verbose -Message "Adding Owner {$($ownerUser.ObjectId)} to Group {$($group.Id)}"
-            try
-            {
-                Add-AzureADGroupOwner -ObjectId $group.Id -RefObjectId $ownerUser.ObjectId -ErrorAction Stop
-            }
-            catch
-            {
-                Write-Verbose -Message "Adding Owner - Sleeping for 15 seconds"
-                Start-Sleep -Seconds 15
-                Add-AzureADGroupOwner -ObjectId $group.Id -RefObjectId $ownerUser.ObjectId
-            }
-
-            try
-            {
-                New-Team -GroupId $group.Id -ErrorAction Stop
-            }
-            catch
-            {
-                Write-Verbose -Message "Creating Team - Sleeping for 15 seconds"
-                Start-Sleep -Seconds 15
-                New-Team -GroupId $group.Id
-            }
-        }
-        else
-        {
-            $CurrentParameters.Remove("GlobalAdminAccount") | Out-Null
-            New-Team @CurrentParameters
-        }
-    }
-    elseif ($Ensure -eq "Absent" -and ($team.Ensure -eq "Present"))
-    {
-        Write-Verbose -Message "Removing team $DisplayName"
-        Remove-Team -GroupId $team.GroupId
-    }
 }
 
-function Test-TargetResource
-{
+function Test-TargetResource {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     param
@@ -488,7 +415,7 @@ function Test-TargetResource
         $MailNickName,
 
         [Parameter()]
-        [System.String[]]
+        [System.String]
         $Owner,
 
         [Parameter()]
@@ -563,38 +490,25 @@ function Test-TargetResource
 
         [Parameter()]
         [System.Boolean]
+        $Archived,
+
+        [Parameter()]
+        [System.Boolean]
         $ShowInTeamsSearchAndSuggestions,
+
+        [Parameter()]
+        [System.String]
+        $Classification,
 
         [Parameter()]
         [ValidateSet("Present", "Absent")]
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of Team $DisplayName"
 
@@ -603,20 +517,18 @@ function Test-TargetResource
     Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
     Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
 
-    If (!$PSBoundParameters.ContainsKey('Ensure'))
-    {
+    If (!$PSBoundParameters.ContainsKey('Ensure')) {
         $PSBoundParameters.Add('Ensure', $Ensure)
     }
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
     $ValuesToCheck.Remove('GroupID') | Out-Null
 
-    if ($null -eq $CurrentValues.Owner)
-    {
+    if ($null -eq $CurrentValues.Owner) {
         $ValuesToCheck.Remove("Owner") | Out-Null
     }
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -626,123 +538,59 @@ function Test-TargetResource
     return $TestResult
 }
 
-function Export-TargetResource
-{
+function Export-TargetResource {
     [CmdletBinding()]
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
+
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    try
-    {
-        $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' -InboundParameters $PSBoundParameters
-        if ($ConnectionMode -eq 'ServicePrincipal')
-        {
-            $organization = Get-M365DSCTenantDomain -ApplicationId $ApplicationId -TenantId $TenantId -CertificateThumbprint $CertificateThumbprint
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform MicrosoftTeams
+
+    $teams = Get-Team
+    $i = 1
+    $content = ""
+    $organization = $GlobalAdminAccount.UserName.Split('@')[1]
+    foreach ($team in $teams) {
+        Write-Information "    - [$i/$($teams.Length)] $($team.DisplayName)"
+        $params = @{
+            DisplayName        = $team.DisplayName
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        else
-        {
-            $organization = $GlobalAdminAccount.UserName.Split('@')[1]
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+
+        if ("" -eq $result.Owner) {
+            $result.Remove("Owner")
         }
-
-        $teams = Get-Team
-        $i = 1
-        $content = ""
-        Write-Host "`r`n" -NoNewline
-        foreach ($team in $teams)
-        {
-            Write-Host "    |---[$i/$($teams.Length)] $($team.DisplayName)" -NoNewline
-            $params = @{
-                DisplayName           = $team.DisplayName
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-            }
-            $result = Get-TargetResource @params
-
-            if ($ConnectionMode -eq 'Credential')
-            {
-                $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
-            }
-
-            $result.Remove("GroupID")
-            if ("" -eq $result.Owner)
-            {
-                $result.Remove("Owner")
-            }
-            $content += "        TeamsTeam " + (New-Guid).ToString() + "`r`n"
-            $content += "        {`r`n"
-            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
-            if ($ConnectionMode -eq 'Credential')
-            {
-                $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
-            }
-            else
-            {
-                $partialContent = $currentDSCBlock
-            }
-            $partialContent += "        }`r`n"
-            if ($partialContent.ToLower().Contains("@" + $organization.ToLower()))
-            {
-                $partialContent = $partialContent -ireplace [regex]::Escape("@" + $organization), "@`$OrganizationName"
-            }
-            $content += $partialContent
-            $i++
-            Write-Host $Global:M365DSCEmojiGreenCheckmark
+        if ($null -eq $result.Classification) {
+            $result.Remove("Classification")
         }
-
-        return $content
+        $content += "        TeamsTeam " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $partialContent += "        }`r`n"
+        if ($partialContent.ToLower().Contains("@" + $organization.ToLower())) {
+            $partialContent = $partialContent -ireplace [regex]::Escape("@" + $organization), "@`$OrganizationName"
+        }
+        $content += $partialContent
+        $i++
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
-    }
+
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

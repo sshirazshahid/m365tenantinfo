@@ -24,85 +24,46 @@ function Get-TargetResource
 
     Write-Verbose -Message "Getting configuration of SCFilePlanPropertySubCategory for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+
+    $parent = Get-FilePlanPropertyCategory | Where-Object -FilterScript { $_.DisplayName -eq $Category }
+    $empty = $PSBoundParameters
+    $empty.Ensure = 'Absent'
+    if ($null -eq $parent)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Warning "Invalid Parent Category {$Category} detected in the Get-TargetResource"
+        return $empty
+    }
+
+    $parentId = $parent.Guid
+    $property = Get-FilePlanPropertySubCategory | Where-Object -FilterScript { $_.DisplayName -eq $Name -and `
+        $_.ParentId -eq $parentId }
+
+    if ($null -eq $property)
+    {
+        Write-Verbose -Message "SCFilePlanPropertySubCategory $($Name) does not exist."
+        return $empty
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters
-    }
+        Write-Verbose "Found existing SCFilePlanPropertySubCategory $($Name)"
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-    try
-    {
-        $parent = Get-FilePlanPropertyCategory -ErrorAction Stop | Where-Object -FilterScript { $_.DisplayName -eq $Category }
-
-        if ($null -eq $parent)
-        {
-            Write-Warning "Invalid Parent Category {$Category} detected in the Get-TargetResource"
-            return $nullReturn
+        $result = @{
+            Name               = $property.DisplayName
+            Category           = $parent.DisplayName
+            GlobalAdminAccount = $GlobalAdminAccount
+            Ensure             = 'Present'
         }
 
-        $parentId = $parent.Guid
-        $property = Get-FilePlanPropertySubCategory | Where-Object -FilterScript { $_.DisplayName -eq $Name -and `
-                $_.ParentId -eq $parentId }
-
-        if ($null -eq $property)
-        {
-            Write-Verbose -Message "SCFilePlanPropertySubCategory $($Name) does not exist."
-            return $nullReturn
-        }
-        else
-        {
-            Write-Verbose "Found existing SCFilePlanPropertySubCategory $($Name)"
-
-            $result = @{
-                Name               = $property.DisplayName
-                Category           = $parent.DisplayName
-                GlobalAdminAccount = $GlobalAdminAccount
-                Ensure             = 'Present'
-            }
-
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
-        }
-    }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return $nullReturn
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 
@@ -131,16 +92,14 @@ function Set-TargetResource
 
     Write-Verbose -Message "Setting configuration of SCFilePlanPropertySubCategory for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
 
     $Current = Get-TargetResource @PSBoundParameters
 
@@ -163,7 +122,7 @@ function Set-TargetResource
         try
         {
             $property = Get-FilePlanPropertySubCategory | Where-Object -FilterScript { $_.DisplayName -eq $Name -and `
-                    $_.ParentId -eq $parentId }
+                $_.ParentId -eq $parentId }
             if ($property.Mode.ToString() -ne 'PendingDeletion')
             {
                 Remove-FilePlanPropertySubCategory -Identity $Name -Confirm:$false
@@ -177,6 +136,7 @@ function Set-TargetResource
         {
             New-M365DSCLogEntry  -Error $_ -Message $_ -Source $MyInvocation.MyCommand.ModuleName
         }
+
     }
 }
 
@@ -203,15 +163,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of SCFilePlanPropertySubCategory for $Name"
 
@@ -221,7 +172,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -241,71 +192,39 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+
+    $InformationPreference = "Continue"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+    [array]$Properties = Get-FilePlanPropertySubCategory
 
-    try
+    $i = 1
+    $content = ""
+    foreach ($Property in $Properties)
     {
-        [array]$Properties = Get-FilePlanPropertySubCategory -ErrorAction Stop
-
-        $i = 1
-        $dscContent = ""
-        Write-Host "`r`n" -NoNewline
-        foreach ($Property in $Properties)
-        {
-            $parent = Get-FilePlanPropertyCategory | Where-Object -FilterScript { $_.Guid -like "*$($property.ParentId)*" }
-            Write-Host "    |---[$i/$($Properties.Length)] $($Property.Name)" -NoNewline
-            $Params = @{
-                Name               = $Property.DisplayName
-                Category           = $parent.DisplayName
-                GlobalAdminAccount = $GlobalAdminAccount
-            }
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+        $parent = Get-FilePlanPropertyCategory | Where-Object -FilterScript { $_.Guid -like "*$($property.ParentId)*" }
+        Write-Information "    - [$i/$($Properties.Length)] $($Property.Name)"
+        $params = @{
+            Name               = $Property.DisplayName
+            Category           = $parent.DisplayName
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        return $dscContent
+        $result = Get-TargetResource @params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        SCFilePlanPropertySubCategory " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $i++
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
-    }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

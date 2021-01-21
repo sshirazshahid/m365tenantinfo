@@ -27,11 +27,15 @@ function Get-TargetResource
 
         [Parameter()]
         [System.Boolean]
-        $EnableMailboxIntelligence = $true,
+        $EnableAuthenticationSafetyTip = $true,
 
         [Parameter()]
         [System.Boolean]
-        $EnableMailboxIntelligenceProtection = $false,
+        $EnableAuthenticationSoftPassSafetyTip = $false,
+
+        [Parameter()]
+        [System.Boolean]
+        $EnableMailboxIntelligence = $true,
 
         [Parameter()]
         [System.Boolean]
@@ -47,19 +51,11 @@ function Get-TargetResource
 
         [Parameter()]
         [System.Boolean]
-        $EnableSpoofIntelligence = $true,
-
-        [Parameter()]
-        [System.Boolean]
         $EnableTargetedDomainsProtection = $false,
 
         [Parameter()]
         [System.Boolean]
         $EnableTargetedUserProtection = $false,
-
-        [Parameter()]
-        [System.Boolean]
-        $EnableUnauthenticatedSender = $true,
 
         [Parameter()]
         [System.Boolean]
@@ -77,20 +73,6 @@ function Get-TargetResource
         [Parameter()]
         [System.String[]]
         $ExcludedSenders = @(),
-
-        [Parameter()]
-        [ValidateSet('Automatic', 'Manual', 'Off')]
-        [System.String]
-        $ImpersonationProtectionState = 'Automatic',
-
-        [Parameter()]
-        [ValidateSet('BccMessage', 'Delete', 'MoveToJmf', 'NoAction', 'Quarantine', 'Redirect')]
-        [System.String]
-        $MailboxIntelligenceProtectionAction = 'NoAction',
-
-        [Parameter()]
-        [System.String[]]
-        $MailboxIntelligenceProtectionActionRecipients = @(),
 
         [Parameter()]
         [System.Boolean]
@@ -128,139 +110,82 @@ function Get-TargetResource
         $TargetedUsersToProtect = @(),
 
         [Parameter()]
+        [System.Boolean]
+        $TreatSoftPassAsAuthenticated = $true,
+
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting configuration of AntiPhishPolicy for $Identity"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
+
+    $AntiPhishPolicies = Get-AntiPhishPolicy
+
+    $AntiPhishPolicy = $AntiPhishPolicies | Where-Object -FilterScript { $_.Identity -eq $Identity }
+    if ($null -eq $AntiPhishPolicy)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "AntiPhishPolicy $($Identity) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters
-    }
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-    try
-    {
-        $AntiPhishPolicies = Get-AntiPhishPolicy -ErrorAction Stop
-
-        $AntiPhishPolicy = $AntiPhishPolicies | Where-Object -FilterScript { $_.Identity -eq $Identity }
-        if ($null -eq $AntiPhishPolicy)
+        $PhishThresholdLevelValue = $AntiPhishPolicy.PhishThresholdLevel
+        if ([System.String]::IsNullOrEmpty($PhishThresholdLevelValue))
         {
-            Write-Verbose -Message "AntiPhishPolicy $($Identity) does not exist."
-            return $nullReturn
+            $PhishThresholdLevelValue = '1'
         }
-        else
-        {
-            $PhishThresholdLevelValue = $AntiPhishPolicy.PhishThresholdLevel
-            if ([System.String]::IsNullOrEmpty($PhishThresholdLevelValue))
-            {
-                $PhishThresholdLevelValue = '1'
-            }
 
-            $TargetedUserProtectionActionValue = $AntiPhishPolicy.TargetedUserProtectionAction
-            if ([System.String]::IsNullOrEmpty($TargetedUserProtectionActionValue))
-            {
-                $TargetedUserProtectionActionValue = 'NoAction'
-            }
-
-            $result = @{
-                Identity                                      = $Identity
-                AdminDisplayName                              = $AntiPhishPolicy.AdminDisplayName
-                AuthenticationFailAction                      = $AntiPhishPolicy.AuthenticationFailAction
-                Enabled                                       = $AntiPhishPolicy.Enabled
-                EnableAntispoofEnforcement                    = $AntiPhishPolicy.EnableAntispoofEnforcement
-                EnableMailboxIntelligence                     = $AntiPhishPolicy.EnableMailboxIntelligence
-                EnableMailboxIntelligenceProtection           = $AntiPhishPolicy.EnableMailboxIntelligenceProtection
-                EnableOrganizationDomainsProtection           = $AntiPhishPolicy.EnableOrganizationDomainsProtection
-                EnableSimilarDomainsSafetyTips                = $AntiPhishPolicy.EnableSimilarDomainsSafetyTips
-                EnableSimilarUsersSafetyTips                  = $AntiPhishPolicy.EnableSimilarUsersSafetyTips
-                EnableSpoofIntelligence                       = $AntiPhishPolicy.EnableSpoofIntelligence
-                EnableTargetedDomainsProtection               = $AntiPhishPolicy.EnableTargetedDomainsProtection
-                EnableTargetedUserProtection                  = $AntiPhishPolicy.EnableTargetedUserProtection
-                EnableUnauthenticatedSender                   = $AntiPhishPolicy.EnableUnauthenticatedSender
-                EnableUnusualCharactersSafetyTips             = $AntiPhishPolicy.EnableUnusualCharactersSafetyTips
-                ExcludedDomains                               = $AntiPhishPolicy.ExcludedDomains
-                ExcludedSenders                               = $AntiPhishPolicy.ExcludedSenders
-                ImpersonationProtectionState                  = $AntiPhishPolicy.ImpersonationProtectionState
-                MailboxIntelligenceProtectionAction           = $AntiPhishPolicy.MailboxIntelligenceProtectionAction
-                MailboxIntelligenceProtectionActionRecipients = $AntiPhishPolicy.MailboxIntelligenceProtectionActionRecipients
-                MakeDefault                                   = $AntiPhishPolicy.MakeDefault
-                PhishThresholdLevel                           = $PhishThresholdLevelValue
-                TargetedDomainActionRecipients                = $AntiPhishPolicy.TargetedDomainActionRecipients
-                TargetedDomainProtectionAction                = $AntiPhishPolicy.TargetedDomainProtectionAction
-                TargetedDomainsToProtect                      = $AntiPhishPolicy.TargetedDomainsToProtect
-                TargetedUserActionRecipients                  = $AntiPhishPolicy.TargetedUserActionRecipients
-                TargetedUserProtectionAction                  = $TargetedUserProtectionActionValue
-                TargetedUsersToProtect                        = $AntiPhishPolicy.TargetedUsersToProtect
-                GlobalAdminAccount                            = $GlobalAdminAccount
-                Ensure                                        = 'Present'
-            }
-
-            Write-Verbose -Message "Found AntiPhishPolicy $($Identity)"
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
-        }
-    }
-    catch
-    {
-        try
+        $TargetedUserProtectionActionValue = $AntiPhishPolicy.TargetedUserProtectionAction
+        if ([System.String]::IsNullOrEmpty($TargetedUserProtectionActionValue))
         {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
+            $TargetedUserProtectionActionValue = 'NoAction'
         }
-        catch
-        {
-            Write-Verbose -Message $_
+
+        $result = @{
+            Identity                              = $Identity
+            AdminDisplayName                      = $AntiPhishPolicy.AdminDisplayName
+            AuthenticationFailAction              = $AntiPhishPolicy.AuthenticationFailAction
+            Enabled                               = $AntiPhishPolicy.Enabled
+            EnableAntispoofEnforcement            = $AntiPhishPolicy.EnableAntispoofEnforcement
+            EnableAuthenticationSafetyTip         = $AntiPhishPolicy.EnableAuthenticationSafetyTip
+            EnableAuthenticationSoftPassSafetyTip = $AntiPhishPolicy.EnableAuthenticationSoftPassSafetyTip
+            EnableMailboxIntelligence             = $AntiPhishPolicy.EnableMailboxIntelligence
+            EnableOrganizationDomainsProtection   = $AntiPhishPolicy.EnableOrganizationDomainsProtection
+            EnableSimilarDomainsSafetyTips        = $AntiPhishPolicy.EnableSimilarDomainsSafetyTips
+            EnableSimilarUsersSafetyTips          = $AntiPhishPolicy.EnableSimilarUsersSafetyTips
+            EnableTargetedDomainsProtection       = $AntiPhishPolicy.EnableTargetedDomainsProtection
+            EnableTargetedUserProtection          = $AntiPhishPolicy.EnableTargetedUserProtection
+            EnableUnusualCharactersSafetyTips     = $AntiPhishPolicy.EnableUnusualCharactersSafetyTips
+            ExcludedDomains                       = $AntiPhishPolicy.ExcludedDomains
+            ExcludedSenders                       = $AntiPhishPolicy.ExcludedSenders
+            MakeDefault                           = $AntiPhishPolicy.MakeDefault
+            PhishThresholdLevel                   = $PhishThresholdLevelValue
+            TargetedDomainActionRecipients        = $AntiPhishPolicy.TargetedDomainActionRecipients
+            TargetedDomainProtectionAction        = $TargetedDomainProtectionAction
+            TargetedDomainsToProtect              = $AntiPhishPolicy.TargetedDomainsToProtect
+            TargetedUserActionRecipients          = $AntiPhishPolicy.TargetedUserActionRecipients
+            TargetedUserProtectionAction          = $TargetedUserProtectionActionValue
+            TargetedUsersToProtect                = $AntiPhishPolicy.TargetedUsersToProtect
+            TreatSoftPassAsAuthenticated          = $AntiPhishPolicy.TreatSoftPassAsAuthenticated
+            GlobalAdminAccount                    = $GlobalAdminAccount
+            Ensure                                = 'Present'
         }
-        return $nullReturn
+
+        Write-Verbose -Message "Found AntiPhishPolicy $($Identity)"
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 
@@ -292,11 +217,15 @@ function Set-TargetResource
 
         [Parameter()]
         [System.Boolean]
-        $EnableMailboxIntelligence = $true,
+        $EnableAuthenticationSafetyTip = $true,
 
         [Parameter()]
         [System.Boolean]
-        $EnableMailboxIntelligenceProtection = $false,
+        $EnableAuthenticationSoftPassSafetyTip = $false,
+
+        [Parameter()]
+        [System.Boolean]
+        $EnableMailboxIntelligence = $true,
 
         [Parameter()]
         [System.Boolean]
@@ -312,19 +241,11 @@ function Set-TargetResource
 
         [Parameter()]
         [System.Boolean]
-        $EnableSpoofIntelligence = $true,
-
-        [Parameter()]
-        [System.Boolean]
         $EnableTargetedDomainsProtection = $false,
 
         [Parameter()]
         [System.Boolean]
         $EnableTargetedUserProtection = $false,
-
-        [Parameter()]
-        [System.Boolean]
-        $EnableUnauthenticatedSender = $true,
 
         [Parameter()]
         [System.Boolean]
@@ -342,20 +263,6 @@ function Set-TargetResource
         [Parameter()]
         [System.String[]]
         $ExcludedSenders = @(),
-
-        [Parameter()]
-        [ValidateSet('Automatic', 'Manual', 'Off')]
-        [System.String]
-        $ImpersonationProtectionState = 'Automatic',
-
-        [Parameter()]
-        [ValidateSet('BccMessage', 'Delete', 'MoveToJmf', 'NoAction', 'Quarantine', 'Redirect')]
-        [System.String]
-        $MailboxIntelligenceProtectionAction = 'NoAction',
-
-        [Parameter()]
-        [System.String[]]
-        $MailboxIntelligenceProtectionActionRecipients = @(),
 
         [Parameter()]
         [System.Boolean]
@@ -393,43 +300,24 @@ function Set-TargetResource
         $TargetedUsersToProtect = @(),
 
         [Parameter()]
+        [System.Boolean]
+        $TreatSoftPassAsAuthenticated = $true,
+
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration of AntiPhishPolicy for $Identity"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
     $AntiPhishPolicies = Get-AntiPhishPolicy
 
@@ -486,11 +374,15 @@ function Test-TargetResource
 
         [Parameter()]
         [System.Boolean]
-        $EnableMailboxIntelligence = $true,
+        $EnableAuthenticationSafetyTip = $true,
 
         [Parameter()]
         [System.Boolean]
-        $EnableMailboxIntelligenceProtection = $false,
+        $EnableAuthenticationSoftPassSafetyTip = $false,
+
+        [Parameter()]
+        [System.Boolean]
+        $EnableMailboxIntelligence = $true,
 
         [Parameter()]
         [System.Boolean]
@@ -506,19 +398,11 @@ function Test-TargetResource
 
         [Parameter()]
         [System.Boolean]
-        $EnableSpoofIntelligence = $true,
-
-        [Parameter()]
-        [System.Boolean]
         $EnableTargetedDomainsProtection = $false,
 
         [Parameter()]
         [System.Boolean]
         $EnableTargetedUserProtection = $false,
-
-        [Parameter()]
-        [System.Boolean]
-        $EnableUnauthenticatedSender = $true,
 
         [Parameter()]
         [System.Boolean]
@@ -536,20 +420,6 @@ function Test-TargetResource
         [Parameter()]
         [System.String[]]
         $ExcludedSenders = @(),
-
-        [Parameter()]
-        [ValidateSet('Automatic', 'Manual', 'Off')]
-        [System.String]
-        $ImpersonationProtectionState = 'Automatic',
-
-        [Parameter()]
-        [ValidateSet('BccMessage', 'Delete', 'MoveToJmf', 'NoAction', 'Quarantine', 'Redirect')]
-        [System.String]
-        $MailboxIntelligenceProtectionAction = 'NoAction',
-
-        [Parameter()]
-        [System.String[]]
-        $MailboxIntelligenceProtectionActionRecipients = @(),
 
         [Parameter()]
         [System.Boolean]
@@ -587,38 +457,13 @@ function Test-TargetResource
         $TargetedUsersToProtect = @(),
 
         [Parameter()]
+        [System.Boolean]
+        $TreatSoftPassAsAuthenticated = $true,
+
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of AntiPhishPolicy for $Identity"
 
@@ -630,7 +475,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -646,107 +491,47 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
+    $InformationPreference = "Continue"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline `
+        -ErrorAction SilentlyContinue
 
-    try
+    $AntiPhishPolicies = Get-AntiPhishPolicy
+    $content = ""
+    $i = 1
+    $PolicyCount = $AntiPhishPolicies.Length
+    if ($null -eq $PolicyCount)
     {
-        [array]$AntiPhishPolicies = Get-AntiPhishPolicy -ErrorAction Stop
-        $dscContent = ""
-        $i = 1
-
-        if ($AntiphishPolicies.Length -eq 0)
-        {
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-        }
-        else
-        {
-            Write-Host "`r`n" -NoNewline
-        }
-        foreach ($Policy in $AntiPhishPolicies)
-        {
-            Write-Host "    |---[$i/$($AntiphishPolicies.Length)] $($Policy.Identity)" -NoNewline
-
-            $Params = @{
-                Identity              = $Policy.Identity
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-                CertificatePassword   = $CertificatePassword
-                CertificatePath       = $CertificatePath
-            }
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
-        }
-        return $dscContent
+        $PolicyCount = 1
     }
-    catch
+    foreach ($Policy in $AntiPhishPolicies)
     {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
+        Write-Information "    [$i/$PolicyCount] $($Policy.Identity)"
+
+        $Params = @{
+            Identity           = $Policy.Identity
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
+        $result = Get-TargetResource @Params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content += "        EXOAntiPhishPolicy " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $i++
     }
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource

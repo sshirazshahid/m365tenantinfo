@@ -24,7 +24,6 @@ Configuration Example
             AllowUrlPreviews              = $false
             AllowUserChat                 = $True
             AllowUserDeleteMessage        = $false
-            AllowUserEditMessage          = $false
             AllowUserTranslation          = $True
             AllowRemoveUser               = $false
             AllowPriorityMessages         = $True

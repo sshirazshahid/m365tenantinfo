@@ -94,132 +94,95 @@ function Get-TargetResource
 
     Write-Verbose -Message "Getting configuration of DLPCompliancePolicy for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+
+    $PolicyRule = Get-DlpComplianceRule -Identity $Name -ErrorAction SilentlyContinue
+
+    if ($null -eq $PolicyRule)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "DLPComplianceRule $($Name) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters
-    }
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-    try
-    {
-        $PolicyRule = Get-DlpComplianceRule -Identity $Name -ErrorAction SilentlyContinue
+        Write-Verbose "Found existing DLPComplianceRule $($Name)"
 
-        if ($null -eq $PolicyRule)
+        # Cmdlet returns a string, but in order to properly validate valid values, we need to convert
+        # to a String array
+        $ArrayIncidentReportContent = @()
+
+        if ($null -ne $PolicyRule.IncidentReportContent)
         {
-            Write-Verbose -Message "DLPComplianceRule $($Name) does not exist."
-            return $nullReturn
+            $ArrayIncidentReportContent = $PolicyRule.IncidentReportContent.Replace(' ', '').Split(',')
         }
-        else
+
+        if ($null -ne $PolicyRule.NotifyAllowOverride)
         {
-            Write-Verbose "Found existing DLPComplianceRule $($Name)"
+            $NotifyAllowOverrideValue = $PolicyRule.NotifyAllowOverride.Replace(' ', '').Split(',')
+        }
 
-            # Cmdlet returns a string, but in order to properly validate valid values, we need to convert
-            # to a String array
-            $ArrayIncidentReportContent = @()
+        [array] $SensitiveInfo = @($PolicyRule.ContentContainsSensitiveInformation[0])
 
-            if ($null -ne $PolicyRule.IncidentReportContent)
+        if ($null -ne $SensitiveInfo.groups)
+        {
+            $groups = $SensitiveInfo.groups
+            $SensitiveInfo = @()
+            foreach ($group in $groups)
             {
-                $ArrayIncidentReportContent = $PolicyRule.IncidentReportContent.Replace(' ', '').Split(',')
-            }
-
-            if ($null -ne $PolicyRule.NotifyAllowOverride)
-            {
-                $NotifyAllowOverrideValue = $PolicyRule.NotifyAllowOverride.Replace(' ', '').Split(',')
-            }
-
-            [array] $SensitiveInfo = @($PolicyRule.ContentContainsSensitiveInformation[0])
-
-            if ($null -ne $SensitiveInfo.groups)
-            {
-                $groups = $SensitiveInfo.groups
-                $SensitiveInfo = @()
-                foreach ($group in $groups)
+                foreach ($siEntry in $group.sensitivetypes)
                 {
-                    foreach ($siEntry in $group.sensitivetypes)
-                    {
-                        $SensitiveInfo += [System.Collections.Hashtable]$siEntry
-                    }
+                    $SensitiveInfo += [System.Collections.Hashtable]$siEntry
                 }
             }
-
-            $result = @{
-                Ensure                              = 'Present'
-                Name                                = $PolicyRule.Name
-                Policy                              = $PolicyRule.ParentPolicyName
-                AccessScope                         = $PolicyRule.AccessScope
-                BlockAccess                         = $PolicyRule.BlockAccess
-                BlockAccessScope                    = $PolicyRule.BlockAccessScope
-                Comment                             = $PolicyRule.Comment
-                ContentContainsSensitiveInformation = $SensitiveInfo
-                ContentPropertyContainsWords        = $PolicyRule.ContentPropertyContainsWords
-                Disabled                            = $PolicyRule.Disabled
-                GenerateAlert                       = $PolicyRule.GenerateAlert
-                GenerateIncidentReport              = $PolicyRule.GenerateIncidentReport
-                IncidentReportContent               = $ArrayIncidentReportContent
-                NotifyAllowOverride                 = $NotifyAllowOverrideValue
-                NotifyEmailCustomText               = $PolicyRule.NotifyEmailCustomText
-                NotifyPolicyTipCustomText           = $PolicyRule.NotifyPolicyTipCustomText
-                NotifyUser                          = $PolicyRule.NotifyUser
-                ReportSeverityLevel                 = $PolicyRule.ReportSeverityLevel
-                RuleErrorAction                     = $PolicyRule.RuleErrorAction
-            }
-
-            $paramsToRemove = @()
-            foreach ($paramName in $result.Keys)
-            {
-                if ($null -eq $result[$paramName] -or "" -eq $result[$paramName] -or @() -eq $result[$paramName])
-                {
-                    $paramsToRemove += $paramName
-                }
-            }
-
-            foreach ($paramName in $paramsToRemove)
-            {
-                $result.Remove($paramName)
-            }
-
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
         }
-    }
-    catch
-    {
-        try
+
+        $result = @{
+            Ensure                              = 'Present'
+            Name                                = $PolicyRule.Name
+            Policy                              = $PolicyRule.ParentPolicyName
+            AccessScope                         = $PolicyRule.AccessScope
+            BlockAccess                         = $PolicyRule.BlockAccess
+            BlockAccessScope                    = $PolicyRule.BlockAccessScope
+            Comment                             = $PolicyRule.Comment
+            ContentContainsSensitiveInformation = $SensitiveInfo
+            ContentPropertyContainsWords        = $PolicyRule.ContentPropertyContainsWords
+            Disabled                            = $PolicyRule.Disabled
+            GenerateAlert                       = $PolicyRule.GenerateAlert
+            GenerateIncidentReport              = $PolicyRule.GenerateIncidentReport
+            IncidentReportContent               = $ArrayIncidentReportContent
+            NotifyAllowOverride                 = $NotifyAllowOverrideValue
+            NotifyEmailCustomText               = $PolicyRule.NotifyEmailCustomText
+            NotifyPolicyTipCustomText           = $PolicyRule.NotifyPolicyTipCustomText
+            NotifyUser                          = $PolicyRule.NotifyUser
+            ReportSeverityLevel                 = $PolicyRule.ReportSeverityLevel
+            RuleErrorAction                     = $PolicyRule.RuleErrorAction
+        }
+
+        $paramsToRemove = @()
+        foreach ($paramName in $result.Keys)
         {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
+            if ($null -eq $result[$paramName] -or "" -eq $result[$paramName] -or @() -eq $result[$paramName])
             {
-                $tenantIdValue = $TenantId
+                $paramsToRemove += $paramName
             }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
         }
-        catch
+
+        foreach ($paramName in $paramsToRemove)
         {
-            Write-Verbose -Message $_
+            $result.Remove($paramName)
         }
-        return $nullReturn
+
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 
@@ -318,16 +281,14 @@ function Set-TargetResource
 
     Write-Verbose -Message "Setting configuration of DLPComplianceRule for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
 
     $CurrentRule = Get-TargetResource @PSBoundParameters
 
@@ -362,10 +323,10 @@ function Set-TargetResource
             $value += Get-SCDLPSensitiveInformation $item
         }
         $UpdateParams.ContentContainsSensitiveInformation = Get-SCDLPSensitiveInformation -SensitiveInformation $value
-        $UpdateParams.Remove("GlobalAdminAccount") | Out-Null
-        $UpdateParams.Remove("Ensure") | Out-Null
-        $UpdateParams.Remove("Name") | Out-Null
-        $UpdateParams.Remove("Policy") | Out-Null
+        $UpdateParams.Remove("GlobalAdminAccount")
+        $UpdateParams.Remove("Ensure")
+        $UpdateParams.Remove("Name")
+        $UpdateParams.Remove("Policy")
         $UpdateParams.Add("Identity", $Name)
 
         Write-Verbose "Updating Rule with values: $(Convert-M365DscHashtableToString -Hashtable $UpdateParams)"
@@ -471,15 +432,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of DLPComplianceRule for $Name"
 
@@ -490,7 +442,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck @("Name",
@@ -528,83 +480,44 @@ function Export-TargetResource
         $GlobalAdminAccount
     )
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -Platform SecurityComplianceCenter `
+        -CloudCredential $GlobalAdminAccount
 
+    $InformationPreference = "Continue"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
+    $rules = Get-DLPComplianceRule | Where-Object { $_.Mode -ne 'PendingDeletion' }
 
-    try
+    $i = 1
+    $DSCContent = ""
+    foreach ($rule in $rules)
     {
-        [array]$rules = Get-DLPComplianceRule -ErrorAction Stop | Where-Object { $_.Mode -ne 'PendingDeletion' }
+        Write-Information "    - [$i/$($rules.Length)] $($rule.Name)"
+        $result = Get-TargetResource -Name $rule.Name -Policy $rule.ParentPolicyName -GlobalAdminAccount $GlobalAdminAccount
 
-        $i = 1
-        $dscContent = ""
-        Write-Host "`r`n" -NoNewline
-        foreach ($rule in $rules)
+        $IsCIMArray = $false
+        if ($result.ContentContainsSensitiveInformation.Length -gt 1)
         {
-            Write-Host "    |---[$i/$($rules.Length)] $($rule.Name)" -NoNewline
-            $Params = @{
-                Name               = $rule.name
-                Policy             = $rule.ParentPolicyName
-                GlobalAdminAccount = $GlobalAdminAccount
-            }
-            $Results = Get-TargetResource @Params
-
-            $IsCIMArray = $false
-            if ($Results.ContentContainsSensitiveInformation.Length -gt 1)
-            {
-                $IsCIMArray = $true
-            }
-            $Results.ContentContainsSensitiveInformation = ConvertTo-SCDLPSensitiveInformationString -InformationArray $Results.ContentContainsSensitiveInformation
-
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $currentDSCBlock = Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            $currentDSCBlock = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "ContentContainsSensitiveInformation" -IsCIMArray $IsCIMArray
-
-            $dscContent += $currentDSCBlock
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
+            $IsCIMArray = $true
         }
+        $result.ContentContainsSensitiveInformation = ConvertTo-SCDLPSensitiveInformationString -InformationArray $result.ContentContainsSensitiveInformation
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $DSCContent += "        SCDLPComplianceRule " + (New-GUID).ToString() + "`r`n"
+        $DSCContent += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $currentDSCBlock = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "ContentContainsSensitiveInformation" -IsCIMArray $IsCIMArray
 
-        return $dscContent
+        $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $partialContent += "        }`r`n"
+        $DSCContent += $partialContent
+        $i++
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
-    }
+
+    return $DSCContent
 }
 
 function ConvertTo-SCDLPSensitiveInformationString

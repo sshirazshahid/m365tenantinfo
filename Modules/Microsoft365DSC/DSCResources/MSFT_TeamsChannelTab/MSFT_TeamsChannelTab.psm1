@@ -62,7 +62,11 @@ function Get-TargetResource
 
         [Parameter(Mandatory = $true)]
         [System.String]
-        $CertificateThumbprint
+        $CertificateThumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.PSCredential]
+        $GlobalAdminAccount
     )
     Write-Verbose -Message "Getting configuration of Tab $DisplayName"
 
@@ -80,7 +84,14 @@ function Get-TargetResource
     $nullReturn.Ensure = "Absent"
 
     $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' `
-        -InboundParameters $PSBoundParameters
+        -InboundParameters @{GlobalAdminAccount = $GlobalAdminAccount}
+
+    $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftGraph' `
+        -InboundParameters @{
+            ApplicationId = $ApplicationId;
+            TenantId = $TenantId;
+            CertificateThumbprint = $CertificateThumbprint;
+    }
 
     try
     {
@@ -122,8 +133,13 @@ function Get-TargetResource
 
         $nullReturn.TeamId = $teamInstance.GroupId
 
+
         $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftGraph' `
-            -InboundParameters $PSBoundParameters
+            -InboundParameters @{
+                ApplicationId = $ApplicationId;
+                TenantId = $TenantId;
+                CertificateThumbprint = $CertificateThumbprint;
+        }
         # Get the Channel ID
         Write-Verbose -Message "Getting Channels for Team {$TeamName} with ID {$($teamInstance.GroupId)}"
         $channelInstance = Get-MgTeamChannel -TeamId $teamInstance.GroupId | Where-Object -FilterScript { $_.DisplayName -eq $ChannelName }
@@ -144,7 +160,8 @@ function Get-TargetResource
 
         if ($tabInstance.Length -gt 1)
         {
-            throw "More than one instance of a tab with name {$DisplayName} was found."
+            Write-warning "More than one instance of a tab with name {$DisplayName} was found."
+            $tabInstance = $tabInstance[0]
         }
 
         if ($null -eq $tabInstance)
@@ -260,7 +277,11 @@ function Set-TargetResource
 
         [Parameter(Mandatory = $true)]
         [System.String]
-        $CertificateThumbprint
+        $CertificateThumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.PSCredential]
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration of Team $DisplayName"
@@ -275,8 +296,15 @@ function Set-TargetResource
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
+    $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' `
+        -InboundParameters @{GlobalAdminAccount = $GlobalAdminAccount}
+
     $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftGraph' `
-        -InboundParameters $PSBoundParameters
+        -InboundParameters @{
+            ApplicationId = $ApplicationId;
+            TenantId = $TenantId;
+            CertificateThumbprint = $CertificateThumbprint;
+    }
 
     $tab = Get-TargetResource @PSBoundParameters
 
@@ -285,6 +313,7 @@ function Set-TargetResource
     $CurrentParameters.Remove("ApplicationId") | Out-Null
     $CurrentParameters.Remove("TenantId") | Out-Null
     $CurrentParameters.Remove("CertificateThumbprint") | Out-Null
+    $CurrentParameters.Remove("GlobalAdminAccount") | Out-Null
 
     Write-Verbose -Message "Retrieving Team Channel {$ChannelName} from Team {$($tab.TeamId)}"
     $ChannelInstance = Get-MgTeamChannel -TeamId $tab.TeamId `
@@ -390,7 +419,11 @@ function Test-TargetResource
 
         [Parameter(Mandatory = $true)]
         [System.String]
-        $CertificateThumbprint
+        $CertificateThumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.PSCredential]
+        $GlobalAdminAccount
     )
     #region Telemetry
     $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
@@ -414,6 +447,7 @@ function Test-TargetResource
     $ValuesToCheck.Remove('TenantId') | Out-Null
     $ValuesToCheck.Remove('ApplicationId') | Out-Null
     $ValuesToCheck.Remove('CertificateThumbprint') | Out-Null
+    $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
     $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
@@ -459,11 +493,15 @@ function Export-TargetResource
 
     try
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftGraph' `
-            -InboundParameters $PSBoundParameters
-
         $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftTeams' `
-            -InboundParameters $PSBoundParameters
+        -InboundParameters @{GlobalAdminAccount = $GlobalAdminAccount}
+
+        $ConnectionMode = New-M365DSCConnection -Platform 'MicrosoftGraph' `
+            -InboundParameters @{
+                ApplicationId = $ApplicationId;
+                TenantId = $TenantId;
+                CertificateThumbprint = $CertificateThumbprint;
+        }
 
         [array]$teams = Get-Team
         $i = 1
@@ -480,6 +518,7 @@ function Export-TargetResource
             }
             catch
             {
+		Write-Host $_
                 Write-Host "        $($Global:M365DSCEmojiRedX) The specified Service Principal doesn't have access to read Channel information. Permission Required: Channel.ReadBasic.All"
                 Add-M365DSCEvent -Message $_ -EntryType 'Error' `
                     -EventID 1 -Source $($MyInvocation.MyCommand.Source) `

@@ -29,15 +29,6 @@ AdminDisplayName
 - Description: The AdminDisplayName parameter specifies a
     description for the policy.
 
-DeliverMessageAfterScan
-
-- Required: No
-- Description: The DeliverMessageAfterScan parameter specifies whether
-  to deliver email messages only after Safe Links scanning is complete.
-  Valid values are:
-      $true: Wait until Safe Links scanning is complete before delivering the message.
-      $false: If Safe Links scanning can't complete, deliver the message anyway. This is the default value.
-
 DoNotAllowClickThrough
 
 - Required: No
@@ -69,15 +60,6 @@ EnableForInternalSenders
 - Description: This parameter specifies whether the policy is enabled
   for internal senders. $true or $false
 
-EnableSafeLinksForTeams
-
-- Required: No
-- Description: The EnableSafeLinksForTeams parameter specifies whether Safe Links
-  is enabled for Microsoft Teams. Valid values are:
-  $true: Safe Links is enabled for Teams. If a protected user clicks a malicious link in
-  a Teams conversation, group chat, or from channels, a warning page will appear in the default web browser.
-  $false: Safe Links isn't enabled for Teams. This is the default value.
-
 IsEnabled
 
 - Required: No
@@ -104,7 +86,6 @@ ScanUrls
         AdminDisplayName         = 'Test SafeLinks Policy'
         DoNotAllowClickThrough   = $true
         DoNotRewriteUrls         = @('test.contoso.com', 'test.fabrikam.com')
-        DeliverMessageAfterScan  = $true
         DoNotTrackUserClicks     = $true
         EnableForInternalSenders = $false
         IsEnabled                = $true

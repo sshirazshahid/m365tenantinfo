@@ -44,78 +44,40 @@ function Get-TargetResource
 
     Write-Verbose -Message "Getting configuration of SCCaseHoldPolicy for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
+
+    $PolicyObject = Get-CaseHoldPolicy -Case $Case -Identity $Name -ErrorAction SilentlyContinue
+
+    if ($null -eq $PolicyObject)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "SCCaseHoldPolicy $($Name) does not exist."
+        $result = $PSBoundParameters
+        $result.Ensure = 'Absent'
+        return $result
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-            -InboundParameters $PSBoundParameters
-    }
+        Write-Verbose "Found existing SCCaseHoldPolicy $($Name)"
+        $result = @{
+            Ensure               = 'Present'
+            Name                 = $PolicyObject.Name
+            Case                 = $Case
+            Enabled              = $PolicyObject.Enabled
+            Comment              = $PolicyObject.Comment
+            ExchangeLocation     = $PolicyObject.ExchangeLocation.Name
+            PublicFolderLocation = $PolicyObject.PublicFolderLocation.Name
+            SharePointLocation   = $PolicyObject.SharePointLocation.Name
+        }
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = 'Absent'
-    try
-    {
-        $PolicyObject = Get-CaseHoldPolicy -Case $Case -Identity $Name -ErrorAction SilentlyContinue
-
-        if ($null -eq $PolicyObject)
-        {
-            Write-Verbose -Message "SCCaseHoldPolicy $Name does not exist."
-            return $nullReturn
-        }
-        else
-        {
-            Write-Verbose "Found existing SCCaseHoldPolicy $($Name)"
-            $result = @{
-                Ensure               = 'Present'
-                Name                 = $PolicyObject.Name
-                Case                 = $Case
-                Enabled              = $PolicyObject.Enabled
-                Comment              = $PolicyObject.Comment
-                ExchangeLocation     = $PolicyObject.ExchangeLocation.Name
-                PublicFolderLocation = $PolicyObject.PublicFolderLocation.Name
-                SharePointLocation   = $PolicyObject.SharePointLocation.Name
-            }
-
-            Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
-            return $result
-        }
-    }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return $nullReturn
+        Write-Verbose -Message "Get-TargetResource Result: `n $(Convert-M365DscHashtableToString -Hashtable $result)"
+        return $result
     }
 }
 
@@ -165,16 +127,14 @@ function Set-TargetResource
 
     Write-Verbose -Message "Setting configuration of SCCaseHoldPolicy for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
 
     $CurrentPolicy = Get-TargetResource @PSBoundParameters
 
@@ -315,15 +275,6 @@ function Test-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of SCCaseHoldPolicy for $Name"
 
@@ -333,7 +284,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -353,80 +304,48 @@ function Export-TargetResource
         [System.Management.Automation.PSCredential]
         $GlobalAdminAccount
     )
+    $InformationPreference = "Continue"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SecurityComplianceCenter
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'SecurityComplianceCenter' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    [array]$cases = Get-ComplianceCase
 
-    try
+    $dscContent = ""
+    $i = 1
+    foreach ($case in $cases)
     {
-        [array]$cases = Get-ComplianceCase -ErrorAction Stop
+        Write-Information "    [$i/$($Cases.Count)] Scanning Policies in Case {$($case.Name)}"
+        [array]$policies = Get-CaseHoldPolicy -Case $case.Name
 
-        $dscContent = ""
-        $i = 1
-        Write-Host "`r`n" -NoNewline
-        foreach ($case in $cases)
+        $j = 1
+        foreach ($policy in $policies)
         {
-            Write-Host "    |---[$i/$($Cases.Count)] Scanning Policies in Case {$($case.Name)}"
-            [array]$policies = Get-CaseHoldPolicy -Case $case.Name
-
-            $j = 1
-            foreach ($policy in $policies)
-            {
-                Write-Host "        |---[$j/$($policies.Count)] $($policy.Name)" -NoNewline
-                $Params = @{
-                    Name               = $policy.Name
-                    Case               = $case.Name
-                    GlobalAdminAccount = $GlobalAdminAccount
-                }
-                $Results = Get-TargetResource @Params
-                $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                    -Results $Results
-                $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                    -ConnectionMode $ConnectionMode `
-                    -ModulePath $PSScriptRoot `
-                    -Results $Results `
-                    -GlobalAdminAccount $GlobalAdminAccount
-                Write-Host $Global:M365DSCEmojiGreenCheckMark
-                $j++
+            Write-Information "        [$j/$($policies.Count)] $($policy.Name)"
+            $params = @{
+                Name               = $policy.Name
+                Case               = $case.Name
+                GlobalAdminAccount = $GlobalAdminAccount
             }
-            $i++
+            $result = Get-TargetResource @params
+            $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+            $dscContent += "        SCCaseHoldPolicy " + (New-GUID).ToString() + "`r`n"
+            $dscContent += "        {`r`n"
+            $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+            $partialContent = Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+            $partialContent += "        }`r`n"
+            $dscContent += $partialContent
+            $j++
         }
-
-        return $dscContent
+        $i++
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
-    }
+
+    return $dscContent
 }
 
 Export-ModuleMember -Function *-TargetResource

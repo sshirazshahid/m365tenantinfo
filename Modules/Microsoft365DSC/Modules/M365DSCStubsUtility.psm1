@@ -1,4 +1,4 @@
-function New-M365DSCStubFiles
+function Get-M365StubFiles
 {
     param
     (
@@ -14,7 +14,6 @@ function New-M365DSCStubFiles
     if ($null -eq $GlobalAdminAccount)
     {
         $GlobalAdminAccount = Get-Credential
-        $PSBoundParameters.Add("GlobalAdminAccount", $GlobalAdminAccount)
     }
 
     if (Test-Path $DestinationFilePath)
@@ -43,12 +42,8 @@ function New-M365DSCStubFiles
             RandomCmdlet = 'Add-AvailabilityAddressSpace'
         },
         @{
-            Platform   = 'Intune'
-            ModuleName = "Microsoft.Graph.Intune"
-        },
-        @{
             Platform   = 'MicrosoftTeams'
-            ModuleName = 'MicrosoftTeams'
+            ModuleName = 'Microsoft.TeamsCmdlets.PowerShell.Custom'
         },
         @{
             Platform   = 'PnP'
@@ -64,127 +59,88 @@ function New-M365DSCStubFiles
             RandomCmdlet = 'Add-ComplianceCaseMember'
         },
         @{
+            Platform   = 'SharePointOnline'
+            ModuleName = 'Microsoft.Online.SharePoint.PowerShell'
+        },
+        @{
             Platform     = 'SkypeForBusiness'
             ModuleName   = $null
             RandomCmdlet = 'Clear-CsOnlineTelephoneNumberReservation'
         }
     )
-    $Content = ''
+
     foreach ($Module in $Modules)
     {
-        Write-Host "Generating Stubs for {$($Module.Platform)}..."
+        Write-Host "Generating Stubs for {$($Module.Platform)}..." -NoNewline
         $CurrentModuleName = $Module.ModuleName
         if ($null -eq $CurrentModuleName)
         {
-            $ConnectionMode = New-M365DSCConnection -Platform $Module.Platform `
-                -InboundParameters $PSBoundParameters
-            $foundModule = Get-Module | Where-Object -FilterScript { $_.ExportedCommands.Values.Name -ccontains $Module.RandomCmdlet }
+            Test-MSCloudLogin -Platform $Module.Platform -CloudCredential $GlobalAdminAccount
+            $foundModule = Get-Module | Where-Object -FilterScript {$_.ExportedCommands.Values.Name -ccontains $Module.RandomCmdlet}
             $CurrentModuleName = $foundModule.Name
         }
         else
         {
-            Import-Module $CurrentModuleName -Force -ErrorAction SilentlyContinue
-            $ConnectionMode = New-M365DSCConnection -Platform $Module.Platform `
-                -InboundParameters $PSBoundParameters
+            Test-MSCloudLogin -Platform $Module.Platform -CloudCredential $GlobalAdminAccount
         }
 
-        $cmdlets = Get-Command -CommandType 'Cmdlet' | Where-Object -FilterScript { $_.Source -eq $CurrentModuleName }
-        if ($null -eq $cmdlets)
-        {
-            $cmdlets = Get-Command -CommandType 'Function' | Where-Object -FilterScript { $_.Source -eq $CurrentModuleName }
-        }
-
-        try
-        {
-            $aliases = Get-Command -CommandType 'Alias' | Where-Object -FilterScript { $_.Source -eq $CurrentModuleName }
-            $cmdlets += $aliases
-            $cmdlets = $cmdlets | Select-Object -Unique
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
+        $cmdlets = Get-Command | Where-Object -FilterScript { $_.Source -eq $CurrentModuleName }
         $StubContent = ''
         $i = 1
         foreach ($cmdlet in $cmdlets)
         {
             Write-Host $cmdlet
-            Write-Progress -Activity "Generating Stubs" -Status $cmdlet.Name -PercentComplete (($i / $cmdlets.Length) * 100)
-
-            try
+            Write-Progress -Activity "Generating Stubs" -Status $cmdlet.Name -PercentComplete (($i/$cmdlets.Length)*100)
+            $signature = $null
+            $metadata = New-Object -TypeName System.Management.Automation.CommandMetaData -ArgumentList $cmdlet
+            $definition = [System.Management.Automation.ProxyCommand]::Create($metadata)
+            if ($metadata.DefaultParameterSetName -ne 'InvokeByDynamicParameters' -and `
+                $definition.IndexOf('$dynamicParams') -eq -1)
+            {
+                foreach ($line in $definition -split "`n")
+                {
+                    if ($line.Trim() -eq 'begin')
+                    {
+                        break
+                    }
+                    $signature += $line
+                }
+                $StubContent += "function $($cmdlet.Name)`n{`r`n    $signature}`n"
+            }
+            else
             {
                 $metadata = New-Object -TypeName System.Management.Automation.CommandMetaData -ArgumentList $cmdlet
                 $parameters = $metadata.Parameters
-            }
-            catch
-            {
-                Write-Verbose -Message $_
-            }
-
-            $invalidParameters = @("ErrorVariable", `
-                    "ErrorAction", `
+                $StubContent += "function $($cmdlet.Name)`n{`r`n    [CmdletBinding()]`r`n    param(`r`n"
+                if ($parameters.Count -eq 0 -or ($parameters.Count -eq 1 -and $parameters.Keys[0] -eq 'ObjectId'))
+                {
+                    $parameters = $cmdlet.Parameters
+                }
+                $invalidTypes = @("ActionPreference", `
+                    "SwitchParameter")
+                $invalidParameters = @("ErrorVariable", `
                     "InformationVariable", `
-                    "InformationAction", `
                     "WarningVariable", `
-                    "WarningAction", `
                     "OutVariable", `
                     "OutBuffer", `
-                    "PipelineVariable", `
-                    "Verbose", `
-                    "WhatIf", `
-                    "Debug")
-
-            $additionalParameters = (Get-Command $cmdlet.Name).Parameters
-
-            foreach ($additionalParam in $additionalParameters.Keys)
-            {
-                if (-not $parameters.ContainsKey($additionalParam) -and `
-                        -not $invalidParameters.Contains($additionalParameter))
+                    "PipelineVariable")
+                foreach ($key in $parameters.Keys)
                 {
-                    $parameters += @{$additionalParam = $additionalParameters.$additionalParam }
-                }
-            }
-            $StubContent += "function $($cmdlet.Name)`n{`r`n    [CmdletBinding()]`r`n    param(`r`n"
-            $invalidTypes = @("ActionPreference")
-
-            $foundParamNames = @()
-            foreach ($param in $parameters.Values)
-            {
-                if ($foundParamNames -notcontains $param.Name)
-                {
-                    $foundParamNames += $param.Name
-                    if ($param.ParameterType.Name -notin $invalidTypes -and `
-                            $param.Name -notin $invalidParameters -and `
-                            -not [System.String]::IsNullOrEmpty($param.Name))
+                    if ($parameters.$key.ParameterType.Name -notin $invalidTypes -and `
+                        $key -notin $invalidParameters)
                     {
+                        $parameter = $parameters.$key
                         $StubContent += "        [Parameter()]`r`n"
-                        $ParamType = $param.ParameterType.ToString()
-                        if ($ParamType -eq 'System.Collections.Generic.List`1[System.String]')
-                        {
-                            $ParamType = "System.String[]"
-                        }
-                        elseif ($ParamType -eq 'System.Nullable`1[System.Boolean]')
-                        {
-                            $ParamType = "System.Boolean"
-                        }
-                        elseif ($ParamType.StartsWith("System.Collections.Generic.List``1[Microsoft.Open.MSGraph.Model."))
-                        {
-                            $ParamType = "System.Object[]"
-                        }
-                        $StubContent += "        [$ParamType]`r`n"
-                        $StubContent += "        `$$($param.Name),`r`n`r`n"
+                        $StubContent += "        [$($parameter.ParameterType.ToString())]`r`n"
+                        $StubContent += "        `${$key},`r`n`r`n"
                     }
                 }
-            }
-            if ($parameters.Values.Count -gt 0)
-            {
-                $endOfString = $StubContent.SubString($StubContent.Length - 5, 5)
-                if ($endOfString -eq ",`r`n`r`n")
+                if ($parameters.Keys.Count -gt 0)
                 {
-                    $StubContent = $StubContent.Remove($StubContent.Length - 5, 5)
+                    $StubContent = $StubContent.Remove($StubContent.Length-5, 5)
                 }
+                $StubContent += "`r`n    )`r`n}`n"
             }
-            $StubContent += "`r`n    )`r`n}`n"
             $i ++
         }
         Write-Progress -Activity "Generating Stubs" -Completed
@@ -192,7 +148,7 @@ function New-M365DSCStubFiles
         $Content += "#region $($Module.Platform)`r`n"
 
         $TypesToConvert = @('Microsoft.Online.SharePoint.PowerShell.SpoHubSitePipeBind', `
-                'Microsoft.Online.SharePoint.PowerShell.SpoSitePipeBind'
+            'Microsoft.Online.SharePoint.PowerShell.SpoSitePipeBind'
         )
 
         foreach ($type in $TypesToConvert)

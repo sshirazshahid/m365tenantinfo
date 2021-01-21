@@ -236,156 +236,156 @@ function Get-TargetResource
         [System.String]
         $Ensure = 'Present',
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting Mobile Device Mailbox Policy configuration for $Name"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    if ($Global:CurrentModeIsExport)
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
+
+    $AllMobileDeviceMailboxPolicies = Get-MobileDeviceMailboxPolicy
+
+    $MobileDeviceMailboxPolicy = $AllMobileDeviceMailboxPolicies | Where-Object -FilterScript { $_.Name -eq $Name }
+
+    if ($null -eq $MobileDeviceMailboxPolicy)
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters `
-            -SkipModuleReload $true
+        Write-Verbose -Message "Mobile Device Mailbox Policy $($Name) does not exist."
+
+        $nullReturn = @{
+            Name                                     = $Name
+            AllowApplePushNotifications              = $AllowApplePushNotifications
+            AllowGooglePushNotifications             = $AllowGooglePushNotifications
+            AllowMicrosoftPushNotifications          = $AllowMicrosoftPushNotifications
+            AllowBluetooth                           = $AllowBluetooth
+            AllowBrowser                             = $AllowBrowser
+            AllowCamera                              = $AllowCamera
+            AllowConsumerEmail                       = $AllowConsumerEmail
+            AllowDesktopSync                         = $AllowDesktopSync
+            AllowExternalDeviceManagement            = $AllowExternalDeviceManagement
+            AllowHTMLEmail                           = $AllowHTMLEmail
+            AllowInternetSharing                     = $AllowInternetSharing
+            AllowIrDA                                = $AllowIrDA
+            AllowMobileOTAUpdate                     = $AllowMobileOTAUpdate
+            AllowNonProvisionableDevices             = $AllowNonProvisionableDevices
+            AllowPOPIMAPEmail                        = $AllowPOPIMAPEmail
+            AllowRemoteDesktop                       = $AllowRemoteDesktop
+            AllowSimplePassword                      = $AllowSimplePassword
+            AllowSMIMEEncryptionAlgorithmNegotiation = $AllowSMIMEEncryptionAlgorithmNegotiation
+            AllowSMIMESoftCerts                      = $AllowSMIMESoftCerts
+            AllowStorageCard                         = $AllowStorageCard
+            AllowTextMessaging                       = $AllowTextMessaging
+            AllowUnsignedApplications                = $AllowUnsignedApplications
+            AllowUnsignedInstallationPackages        = $AllowUnsignedInstallationPackages
+            AllowWiFi                                = $AllowWiFi
+            AlphanumericPasswordRequired             = $AlphanumericPasswordRequired
+            ApprovedApplicationList                  = $ApprovedApplicationList
+            AttachmentsEnabled                       = $AttachmentsEnabled
+            DeviceEncryptionEnabled                  = $DeviceEncryptionEnabled
+            DevicePolicyRefreshInterval              = $DevicePolicyRefreshInterval
+            IrmEnabled                               = $IrmEnabled
+            IsDefault                                = $IsDefault
+            MaxAttachmentSize                        = $MaxAttachmentSize
+            MaxCalendarAgeFilter                     = $MaxCalendarAgeFilter
+            MaxEmailAgeFilter                        = $MaxEmailAgeFilter
+            MaxEmailBodyTruncationSize               = $MaxEmailBodyTruncationSize
+            MaxEmailHTMLBodyTruncationSize           = $MaxEmailHTMLBodyTruncationSize
+            MaxInactivityTimeLock                    = $MaxInactivityTimeLock
+            MaxPasswordFailedAttempts                = $MaxPasswordFailedAttempts
+            MinPasswordComplexCharacters             = $MinPasswordComplexCharacters
+            MinPasswordLength                        = $MinPasswordLength
+            PasswordEnabled                          = $PasswordEnabled
+            PasswordExpiration                       = $PasswordExpiration
+            PasswordHistory                          = $PasswordHistory
+            PasswordRecoveryEnabled                  = $PasswordRecoveryEnabled
+            RequireDeviceEncryption                  = $RequireDeviceEncryption
+            RequireEncryptedSMIMEMessages            = $RequireSignedSMIMEMessages
+            RequireEncryptionSMIMEAlgorithm          = $RequireEncryptionSMIMEAlgorithm
+            RequireManualSyncWhenRoaming             = $RequireManualSyncWhenRoaming
+            RequireSignedSMIMEAlgorithm              = $RequireSignedSMIMEAlgorithm
+            RequireSignedSMIMEMessages               = $RequireSignedSMIMEMessages
+            RequireStorageCardEncryption             = $RequireStorageCardEncryption
+            UnapprovedInROMApplicationList           = $UnapprovedInROMApplicationList
+            UNCAccessEnabled                         = $UNCAccessEnabled
+            WSSAccessEnabled                         = $WSSAccessEnabled
+            Ensure                                   = 'Absent'
+            GlobalAdminAccount                       = $GlobalAdminAccount
+        }
+
+        return $nullReturn
     }
     else
     {
-        $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-            -InboundParameters $PSBoundParameters
-    }
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
-
-    try
-    {
-        $AllMobileDeviceMailboxPolicies = Get-MobileDeviceMailboxPolicy -ErrorAction Stop
-
-        $MobileDeviceMailboxPolicy = $AllMobileDeviceMailboxPolicies | Where-Object -FilterScript { $_.Name -eq $Name }
-
-        if ($null -eq $MobileDeviceMailboxPolicy)
-        {
-            Write-Verbose -Message "Mobile Device Mailbox Policy $($Name) does not exist."
-            return $nullReturn
+        $result = @{
+            Name                                     = $MobileDeviceMailboxPolicy.Name
+            AllowApplePushNotifications              = $MobileDeviceMailboxPolicy.AllowApplePushNotifications
+            AllowGooglePushNotifications             = $MobileDeviceMailboxPolicy.AllowGooglePushNotifications
+            AllowMicrosoftPushNotifications          = $MobileDeviceMailboxPolicy.AllowMicrosoftPushNotifications
+            AllowBluetooth                           = $MobileDeviceMailboxPolicy.AllowBluetooth
+            AllowBrowser                             = $MobileDeviceMailboxPolicy.AllowBrowser
+            AllowCamera                              = $MobileDeviceMailboxPolicy.AllowCamera
+            AllowConsumerEmail                       = $MobileDeviceMailboxPolicy.AllowConsumerEmail
+            AllowDesktopSync                         = $MobileDeviceMailboxPolicy.AllowDesktopSync
+            AllowExternalDeviceManagement            = $MobileDeviceMailboxPolicy.AllowExternalDeviceManagement
+            AllowHTMLEmail                           = $MobileDeviceMailboxPolicy.AllowHTMLEmail
+            AllowInternetSharing                     = $MobileDeviceMailboxPolicy.AllowInternetSharing
+            AllowIrDA                                = $MobileDeviceMailboxPolicy.AllowIrDA
+            AllowMobileOTAUpdate                     = $MobileDeviceMailboxPolicy.AllowMobileOTAUpdate
+            AllowNonProvisionableDevices             = $MobileDeviceMailboxPolicy.AllowNonProvisionableDevices
+            AllowPOPIMAPEmail                        = $MobileDeviceMailboxPolicy.AllowPOPIMAPEmail
+            AllowRemoteDesktop                       = $MobileDeviceMailboxPolicy.AllowRemoteDesktop
+            AllowSimplePassword                      = $MobileDeviceMailboxPolicy.AllowSimplePassword
+            AllowSMIMEEncryptionAlgorithmNegotiation = $MobileDeviceMailboxPolicy.AllowSMIMEEncryptionAlgorithmNegotiation
+            AllowSMIMESoftCerts                      = $MobileDeviceMailboxPolicy.AllowSMIMESoftCerts
+            AllowStorageCard                         = $MobileDeviceMailboxPolicy.AllowStorageCard
+            AllowTextMessaging                       = $MobileDeviceMailboxPolicy.AllowTextMessaging
+            AllowUnsignedApplications                = $MobileDeviceMailboxPolicy.AllowUnsignedApplications
+            AllowUnsignedInstallationPackages        = $MobileDeviceMailboxPolicy.AllowUnsignedInstallationPackages
+            AllowWiFi                                = $MobileDeviceMailboxPolicy.AllowWiFi
+            AlphanumericPasswordRequired             = $MobileDeviceMailboxPolicy.AlphanumericPasswordRequired
+            ApprovedApplicationList                  = $MobileDeviceMailboxPolicy.ApprovedApplicationList
+            AttachmentsEnabled                       = $MobileDeviceMailboxPolicy.AttachmentsEnabled
+            DeviceEncryptionEnabled                  = $MobileDeviceMailboxPolicy.DeviceEncryptionEnabled
+            DevicePolicyRefreshInterval              = $MobileDeviceMailboxPolicy.DevicePolicyRefreshInterval
+            IrmEnabled                               = $MobileDeviceMailboxPolicy.IrmEnabled
+            IsDefault                                = $MobileDeviceMailboxPolicy.IsDefault
+            MaxAttachmentSize                        = $MobileDeviceMailboxPolicy.MaxAttachmentSize
+            MaxCalendarAgeFilter                     = $MobileDeviceMailboxPolicy.MaxCalendarAgeFilter
+            MaxEmailAgeFilter                        = $MobileDeviceMailboxPolicy.MaxEmailAgeFilter
+            MaxEmailBodyTruncationSize               = $MobileDeviceMailboxPolicy.MaxEmailBodyTruncationSize
+            MaxEmailHTMLBodyTruncationSize           = $MobileDeviceMailboxPolicy.MaxEmailHTMLBodyTruncationSize
+            MaxInactivityTimeLock                    = $MobileDeviceMailboxPolicy.MaxInactivityTimeLock
+            MaxPasswordFailedAttempts                = $MobileDeviceMailboxPolicy.MaxPasswordFailedAttempts
+            MinPasswordComplexCharacters             = $MobileDeviceMailboxPolicy.MinPasswordComplexCharacters
+            MinPasswordLength                        = $MobileDeviceMailboxPolicy.MinPasswordLength
+            PasswordEnabled                          = $MobileDeviceMailboxPolicy.PasswordEnabled
+            PasswordExpiration                       = $MobileDeviceMailboxPolicy.PasswordExpiration
+            PasswordHistory                          = $MobileDeviceMailboxPolicy.PasswordHistory
+            PasswordRecoveryEnabled                  = $MobileDeviceMailboxPolicy.PasswordRecoveryEnabled
+            RequireDeviceEncryption                  = $MobileDeviceMailboxPolicy.RequireDeviceEncryption
+            RequireEncryptedSMIMEMessages            = $MobileDeviceMailboxPolicy.RequireSignedSMIMEMessages
+            RequireEncryptionSMIMEAlgorithm          = $MobileDeviceMailboxPolicy.RequireEncryptionSMIMEAlgorithm
+            RequireManualSyncWhenRoaming             = $MobileDeviceMailboxPolicy.RequireManualSyncWhenRoaming
+            RequireSignedSMIMEAlgorithm              = $MobileDeviceMailboxPolicy.RequireSignedSMIMEAlgorithm
+            RequireSignedSMIMEMessages               = $MobileDeviceMailboxPolicy.RequireSignedSMIMEMessages
+            RequireStorageCardEncryption             = $MobileDeviceMailboxPolicy.RequireStorageCardEncryption
+            UnapprovedInROMApplicationList           = $MobileDeviceMailboxPolicy.UnapprovedInROMApplicationList
+            UNCAccessEnabled                         = $MobileDeviceMailboxPolicy.UNCAccessEnabled
+            WSSAccessEnabled                         = $MobileDeviceMailboxPolicy.WSSAccessEnabled
+            Ensure                                   = 'Present'
+            GlobalAdminAccount                       = $GlobalAdminAccount
         }
-        else
-        {
-            $result = @{
-                Name                                     = $MobileDeviceMailboxPolicy.Name
-                AllowApplePushNotifications              = $MobileDeviceMailboxPolicy.AllowApplePushNotifications
-                AllowGooglePushNotifications             = $MobileDeviceMailboxPolicy.AllowGooglePushNotifications
-                AllowMicrosoftPushNotifications          = $MobileDeviceMailboxPolicy.AllowMicrosoftPushNotifications
-                AllowBluetooth                           = $MobileDeviceMailboxPolicy.AllowBluetooth
-                AllowBrowser                             = $MobileDeviceMailboxPolicy.AllowBrowser
-                AllowCamera                              = $MobileDeviceMailboxPolicy.AllowCamera
-                AllowConsumerEmail                       = $MobileDeviceMailboxPolicy.AllowConsumerEmail
-                AllowDesktopSync                         = $MobileDeviceMailboxPolicy.AllowDesktopSync
-                AllowExternalDeviceManagement            = $MobileDeviceMailboxPolicy.AllowExternalDeviceManagement
-                AllowHTMLEmail                           = $MobileDeviceMailboxPolicy.AllowHTMLEmail
-                AllowInternetSharing                     = $MobileDeviceMailboxPolicy.AllowInternetSharing
-                AllowIrDA                                = $MobileDeviceMailboxPolicy.AllowIrDA
-                AllowMobileOTAUpdate                     = $MobileDeviceMailboxPolicy.AllowMobileOTAUpdate
-                AllowNonProvisionableDevices             = $MobileDeviceMailboxPolicy.AllowNonProvisionableDevices
-                AllowPOPIMAPEmail                        = $MobileDeviceMailboxPolicy.AllowPOPIMAPEmail
-                AllowRemoteDesktop                       = $MobileDeviceMailboxPolicy.AllowRemoteDesktop
-                AllowSimplePassword                      = $MobileDeviceMailboxPolicy.AllowSimplePassword
-                AllowSMIMEEncryptionAlgorithmNegotiation = $MobileDeviceMailboxPolicy.AllowSMIMEEncryptionAlgorithmNegotiation
-                AllowSMIMESoftCerts                      = $MobileDeviceMailboxPolicy.AllowSMIMESoftCerts
-                AllowStorageCard                         = $MobileDeviceMailboxPolicy.AllowStorageCard
-                AllowTextMessaging                       = $MobileDeviceMailboxPolicy.AllowTextMessaging
-                AllowUnsignedApplications                = $MobileDeviceMailboxPolicy.AllowUnsignedApplications
-                AllowUnsignedInstallationPackages        = $MobileDeviceMailboxPolicy.AllowUnsignedInstallationPackages
-                AllowWiFi                                = $MobileDeviceMailboxPolicy.AllowWiFi
-                AlphanumericPasswordRequired             = $MobileDeviceMailboxPolicy.AlphanumericPasswordRequired
-                ApprovedApplicationList                  = $MobileDeviceMailboxPolicy.ApprovedApplicationList
-                AttachmentsEnabled                       = $MobileDeviceMailboxPolicy.AttachmentsEnabled
-                DeviceEncryptionEnabled                  = $MobileDeviceMailboxPolicy.DeviceEncryptionEnabled
-                DevicePolicyRefreshInterval              = $MobileDeviceMailboxPolicy.DevicePolicyRefreshInterval
-                IrmEnabled                               = $MobileDeviceMailboxPolicy.IrmEnabled
-                IsDefault                                = $MobileDeviceMailboxPolicy.IsDefault
-                MaxAttachmentSize                        = $MobileDeviceMailboxPolicy.MaxAttachmentSize
-                MaxCalendarAgeFilter                     = $MobileDeviceMailboxPolicy.MaxCalendarAgeFilter
-                MaxEmailAgeFilter                        = $MobileDeviceMailboxPolicy.MaxEmailAgeFilter
-                MaxEmailBodyTruncationSize               = $MobileDeviceMailboxPolicy.MaxEmailBodyTruncationSize
-                MaxEmailHTMLBodyTruncationSize           = $MobileDeviceMailboxPolicy.MaxEmailHTMLBodyTruncationSize
-                MaxInactivityTimeLock                    = $MobileDeviceMailboxPolicy.MaxInactivityTimeLock
-                MaxPasswordFailedAttempts                = $MobileDeviceMailboxPolicy.MaxPasswordFailedAttempts
-                MinPasswordComplexCharacters             = $MobileDeviceMailboxPolicy.MinPasswordComplexCharacters
-                MinPasswordLength                        = $MobileDeviceMailboxPolicy.MinPasswordLength
-                PasswordEnabled                          = $MobileDeviceMailboxPolicy.PasswordEnabled
-                PasswordExpiration                       = $MobileDeviceMailboxPolicy.PasswordExpiration
-                PasswordHistory                          = $MobileDeviceMailboxPolicy.PasswordHistory
-                PasswordRecoveryEnabled                  = $MobileDeviceMailboxPolicy.PasswordRecoveryEnabled
-                RequireDeviceEncryption                  = $MobileDeviceMailboxPolicy.RequireDeviceEncryption
-                RequireEncryptedSMIMEMessages            = $MobileDeviceMailboxPolicy.RequireSignedSMIMEMessages
-                RequireEncryptionSMIMEAlgorithm          = $MobileDeviceMailboxPolicy.RequireEncryptionSMIMEAlgorithm
-                RequireManualSyncWhenRoaming             = $MobileDeviceMailboxPolicy.RequireManualSyncWhenRoaming
-                RequireSignedSMIMEAlgorithm              = $MobileDeviceMailboxPolicy.RequireSignedSMIMEAlgorithm
-                RequireSignedSMIMEMessages               = $MobileDeviceMailboxPolicy.RequireSignedSMIMEMessages
-                RequireStorageCardEncryption             = $MobileDeviceMailboxPolicy.RequireStorageCardEncryption
-                UnapprovedInROMApplicationList           = $MobileDeviceMailboxPolicy.UnapprovedInROMApplicationList
-                UNCAccessEnabled                         = $MobileDeviceMailboxPolicy.UNCAccessEnabled
-                WSSAccessEnabled                         = $MobileDeviceMailboxPolicy.WSSAccessEnabled
-                Ensure                                   = 'Present'
-                GlobalAdminAccount                       = $GlobalAdminAccount
-            }
 
-            Write-Verbose -Message "Found Mobile Device Mailbox Policy $($Name)"
-            return $result
-        }
-    }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return $nullReturn
+        Write-Verbose -Message "Found Mobile Device Mailbox Policy $($Name)"
+        return $result
     }
 }
 
@@ -626,29 +626,9 @@ function Set-TargetResource
         [System.String]
         $Ensure = 'Present',
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting Mobile Device Mailbox Policy configuration for $Name"
@@ -656,17 +636,14 @@ function Set-TargetResource
     $currentMobileDeviceMailboxPolicyConfig = Get-TargetResource @PSBoundParameters
 
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
     $NewMobileDeviceMailboxPolicyParams = @{
         Name                                     = $Name
@@ -729,12 +706,6 @@ function Set-TargetResource
 
     $SetMobileDeviceMailboxPolicyParams = $NewMobileDeviceMailboxPolicyParams.Clone()
     $SetMobileDeviceMailboxPolicyParams.Add('Identity', $Name)
-
-    # Remove the MinPasswordLength property if it is empty
-    if ([System.String]::IsNullOrEmpty($MinPasswordLength))
-    {
-        $NewMobileDeviceMailboxPolicyParams.Remove("MinPasswordLength") | Out-Null
-    }
 
     # CASE: Mobile Device Mailbox Policy doesn't exist but should;
     if ($Ensure -eq "Present" -and $currentMobileDeviceMailboxPolicyConfig.Ensure -eq "Absent")
@@ -997,39 +968,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = 'Present',
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing Mobile Device Mailbox Policy configuration for $Name"
 
@@ -1041,7 +983,7 @@ function Test-TargetResource
     $ValuesToCheck = $PSBoundParameters
     $ValuesToCheck.Remove('GlobalAdminAccount') | Out-Null
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck $ValuesToCheck.Keys
@@ -1057,108 +999,43 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword
+        $GlobalAdminAccount
     )
+    $InformationPreference = 'Continue'
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-    $ConnectionMode = New-M365DSCConnection -Platform 'ExchangeOnline' `
-        -InboundParameters $PSBoundParameters `
-        -SkipModuleReload $true
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform ExchangeOnline
 
-    try
+    [array]$AllMobileDeviceMailboxPolicies = Get-MobileDeviceMailboxPolicy
+
+    $dscContent = ""
+    $i = 1
+    foreach ($MobileDeviceMailboxPolicy in $AllMobileDeviceMailboxPolicies)
     {
-        [array]$AllMobileDeviceMailboxPolicies = Get-MobileDeviceMailboxPolicy -ErrorAction Stop
+        Write-Information "    [$i/$($AllMobileDeviceMailboxPolicies.Count)] $($MobileDeviceMailboxPolicy.Name)"
 
-        $dscContent = ""
-
-        if ($AllMobileDeviceMailboxPolicies.Length -eq 0)
-        {
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
+        $Params = @{
+            Name               = $MobileDeviceMailboxPolicy.Name
+            GlobalAdminAccount = $GlobalAdminAccount
         }
-        else
-        {
-            Write-Host "`r`n" -NoNewline
-        }
-        $i = 1
-        foreach ($MobileDeviceMailboxPolicy in $AllMobileDeviceMailboxPolicies)
-        {
-            Write-Host "    |---[$i/$($AllMobileDeviceMailboxPolicies.Length)] $($MobileDeviceMailboxPolicy.Name)" -NoNewline
-
-            $Params = @{
-                Name                  = $MobileDeviceMailboxPolicy.Name
-                GlobalAdminAccount    = $GlobalAdminAccount
-                ApplicationId         = $ApplicationId
-                TenantId              = $TenantId
-                CertificateThumbprint = $CertificateThumbprint
-                CertificatePassword   = $CertificatePassword
-                CertificatePath       = $CertificatePath
-            }
-            $Results = Get-TargetResource @Params
-            $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-                -Results $Results
-            $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-                -ConnectionMode $ConnectionMode `
-                -ModulePath $PSScriptRoot `
-                -Results $Results `
-                -GlobalAdminAccount $GlobalAdminAccount
-            Write-Host $Global:M365DSCEmojiGreenCheckMark
-            $i++
-        }
-        return $dscContent
+        $result = Get-TargetResource @Params
+        $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+        $content = "        EXOMobileDeviceMailboxPolicy " + (New-GUID).ToString() + "`r`n"
+        $content += "        {`r`n"
+        $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+        $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+        $content += "        }`r`n"
+        $dscContent += $content
+        $i++
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
-    }
+    return $dscContent
 }
 
 Export-ModuleMember -Function *-TargetResource

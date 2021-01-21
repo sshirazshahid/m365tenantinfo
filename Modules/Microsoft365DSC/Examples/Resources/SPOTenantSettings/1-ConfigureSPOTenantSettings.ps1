@@ -23,6 +23,7 @@ Configuration Example
             SearchResolveExactEmailOrUPN                  = $false
             OfficeClientADALDisabled                      = $false
             LegacyAuthProtocolsEnabled                    = $true
+            RequireAcceptingAccountMatchInvitedAccount    = $true
             SignInAccelerationDomain                      = ""
             UsePersistentCookiesForExplorerView           = $false
             UserVoiceForFeedbackEnabled                   = $true

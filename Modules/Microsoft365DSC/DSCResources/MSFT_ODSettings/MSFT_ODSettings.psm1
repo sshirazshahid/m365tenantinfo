@@ -65,52 +65,43 @@ function Get-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Getting configuration of OneDrive Settings"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SharePointOnline
 
-    $nullReturn = $PSBoundParameters
-    $nullReturn.Ensure = "Absent"
+    $nullReturn = @{
+        IsSingleInstance                          = "Yes"
+        BlockMacSync                              = $null
+        DisableReportProblemDialog                = $null
+        DomainGuids                               = $null
+        ExcludedFileExtensions                    = $null
+        GrooveBlockOption                         = $null
+        OneDriveStorageQuota                      = $null
+        OrphanedPersonalSitesRetentionPeriod      = $null
+        OneDriveForGuestsEnabled                  = $null
+        ODBAccessRequests                         = $null
+        ODBMembersCanShare                        = $null
+        NotifyOwnersWhenInvitationsAccepted       = $null
+        NotificationsInOneDriveForBusinessEnabled = $null
+        Ensure                                    = "Absent"
+    }
 
     try
     {
         Write-Verbose -Message "Getting OneDrive quota size for tenant"
-        $tenant = Get-PnPTenant -ErrorAction Stop
+        $tenant = Get-SPOTenant
 
         if ($null -eq $tenant)
         {
@@ -120,7 +111,7 @@ function Get-TargetResource
 
         Write-Verbose -Message "Getting OneDrive quota size for tenant $($tenant.OneDriveStorageQuota)"
         Write-Verbose -Message "Getting tenant client sync setting"
-        $tenantRestrictions = Get-PnPTenantSyncClientRestriction -ErrorAction Stop
+        $tenantRestrictions = Get-SPOTenantSyncClientRestriction
 
         if ($null -eq $tenantRestrictions)
         {
@@ -130,7 +121,7 @@ function Get-TargetResource
 
         $GrooveOption = $null
 
-        if (($tenantRestrictions.OptOutOfGrooveBlock -eq $true) -and ($tenantRestrictions.OptOutOfGrooveSoftBlock -eq $false))
+        if (($tenantRestrictions.OptOutOfGrooveBlock -eq $false) -and ($tenantRestrictions.OptOutOfGrooveSoftBlock -eq $false))
         {
             $GrooveOption = "SoftOptIn"
         }
@@ -179,36 +170,12 @@ function Get-TargetResource
             NotifyOwnersWhenInvitationsAccepted       = $tenant.NotifyOwnersWhenInvitationsAccepted
             NotificationsInOneDriveForBusinessEnabled = $tenant.NotificationsInOneDriveForBusinessEnabled
             Ensure                                    = "Present"
-            ApplicationId                             = $ApplicationId
-            TenantId                                  = $TenantId
-            CertificatePassword                       = $CertificatePassword
-            CertificatePath                           = $CertificatePath
-            CertificateThumbprint                     = $CertificateThumbprint
-            GlobalAdminAccount                        = $GlobalAdminAccount
         }
     }
     catch
     {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
+        $Message = "Failed to get Tenant client sync settings"
+        New-M365DSCLogEntry -Error $_ -Message $Message -Source $MyInvocation.MyCommand.ModuleName
         return $nullReturn
     }
 }
@@ -279,120 +246,94 @@ function Set-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
 
     Write-Verbose -Message "Setting configuration of OneDrive Settings"
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
 
-    $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
-        -InboundParameters $PSBoundParameters
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SharePointOnline
 
     ## Configure OneDrive settings
     ## Parameters below are remove for the Set-SPOTenant cmdlet
     ## they are used in the Set-SPOTenantSyncClientRestriction cmdlet
     $CurrentParameters = $PSBoundParameters
-    $CurrentParameters.Remove("GlobalAdminAccount") | Out-Null
-    $Options = @{}
+    $CurrentParameters.Remove("GlobalAdminAccount")
 
     if ($CurrentParameters.ContainsKey("Ensure"))
     {
-        $CurrentParameters.Remove("Ensure") | Out-Null
+        $CurrentParameters.Remove("Ensure")
     }
+
     if ($CurrentParameters.ContainsKey("BlockMacSync"))
     {
-        $Options.Add("BlockMacSync", $CurrentParameters.BlockMacSync)
-        $CurrentParameters.Remove("BlockMacSync") | Out-Null
+        $CurrentParameters.Remove("BlockMacSync")
     }
     if ($CurrentParameters.ContainsKey("DomainGuids"))
     {
-        $Options.Add("DomainGuids", [System.Guid[]]$CurrentParameters.DomainGuids)
-        $CurrentParameters.Remove("DomainGuids") | Out-Null
+        $CurrentParameters.Remove("DomainGuids")
     }
     if ($CurrentParameters.ContainsKey("DisableReportProblemDialog"))
     {
-        $Options.Add("DisableReportProblemDialog", $CurrentParameters.DisableReportProblemDialog)
-        $CurrentParameters.Remove("DisableReportProblemDialog") | Out-Null
+        $CurrentParameters.Remove("DisableReportProblemDialog")
     }
     if ($CurrentParameters.ContainsKey("ExcludedFileExtensions"))
     {
-        $Options.Add("ExcludedFileExtensions", $CurrentParameters.ExcludedFileExtensions)
-        $CurrentParameters.Remove("ExcludedFileExtensions") | Out-Null
+        $CurrentParameters.Remove("ExcludedFileExtensions")
     }
     if ($CurrentParameters.ContainsKey("GrooveBlockOption"))
     {
-        $Options.Add("GrooveBlockOption", $CurrentParameters.GrooveBlockOption)
-        $CurrentParameters.Remove("GrooveBlockOption") | Out-Null
+        $CurrentParameters.Remove("GrooveBlockOption")
     }
     if ($CurrentParameters.ContainsKey("IsSingleInstance"))
     {
-        $CurrentParameters.Remove("IsSingleInstance") | Out-Null
+        $CurrentParameters.Remove("IsSingleInstance")
     }
 
-    $CurrentParameters.Remove("ApplicationId") | Out-Null
-    $CurrentParameters.Remove("TenantId") | Out-Null
-    $CurrentParameters.Remove("CertificatePath") | Out-Null
-    $CurrentParameters.Remove("CertificatePassword") | Out-Null
-    $CurrentParameters.Remove("CertificateThumbprint") | Out-Null
-
     Write-Verbose -Message "Configuring OneDrive settings."
-    Set-PnPTenant @CurrentParameters
+    Set-SPOTenant @CurrentParameters
+
+    $clientSyncParameters = $PSBoundParameters
 
     ## Configure Sync Client restrictions
     ## Set-SPOTenantSyncClientRestriction has different parameter sets and they cannot be combined see article:
     ## https://docs.microsoft.com/en-us/powershell/module/sharepoint-online/set-spotenantsyncclientrestriction?view=sharepoint-ps
-    Write-Verbose -Message "Setting other configuration parameters"
-    Write-Verbose -Message ($Options | Out-String)
 
-    if ($Options.ContainsKey("ExcludedFileExtensions"))
+    if ($clientSyncParameters.ContainsKey("BlockMacSync") -and $clientSyncParameters.ContainsKey("DomainGuids"))
     {
-        Write-Verbose -Message "Updating ExcludedFileExtensions"
+        Set-SPOTenantSyncClientRestriction -BlockMacSync:$BlockMacSync -DomainGuids $DomainGuids -Enable
+    }
+    elseif ($clientSyncParameters.ContainsKey("DomainGuids") -and ($clientSyncParameters.ContainsKey("BlockMacSync") -eq $false))
+    {
+        Set-SPOTenantSyncClientRestriction -DomainGuids $DomainGuids -Enable
+    }
+
+    if ($clientSyncParameters.ContainsKey("ExcludedFileExtensions"))
+    {
         $BlockedFileTypes = ""
-        foreach ($fileTypes in $Options.ExcludedFileExtensions)
+        foreach ($fileTypes in $ExcludedFileExtensions)
         {
             $BlockedFileTypes += $fileTypes + ';'
         }
-        $Options["ExcludedFileExtensions"] = $BlockedFileTypes
+
+        Set-SPOTenantSyncClientRestriction -ExcludedFileExtensions $BlockedFileTypes
+    }
+    if ($clientSyncParameters.ContainsKey("DisableReportProblemDialog"))
+    {
+        Set-SPOTenantSyncClientRestriction -DisableReportProblemDialog $DisableReportProblemDialog
     }
 
-    if ($Options.ContainsKey("DomainGuids"))
+    if ($clientSyncParameters.ContainsKey("GrooveBlockOption"))
     {
-        Write-Verbose -Message "Updating DomainGuids"
-        Set-PnPTenantSyncClientRestriction @Options -Enable:$true
-    }
-    else
-    {
-        Set-PnPTenantSyncClientRestriction @Options
+        Set-SPOTenantSyncClientRestriction -GrooveBlockOption $GrooveBlockOption
     }
 }
 
@@ -463,39 +404,10 @@ function Test-TargetResource
         [System.String]
         $Ensure = "Present",
 
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
-    #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
-    $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
-    $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
-    Add-M365DSCTelemetryEvent -Data $data
-    #endregion
 
     Write-Verbose -Message "Testing configuration of OneDrive Settings"
 
@@ -504,7 +416,7 @@ function Test-TargetResource
     Write-Verbose -Message "Current Values: $(Convert-M365DscHashtableToString -Hashtable $CurrentValues)"
     Write-Verbose -Message "Target Values: $(Convert-M365DscHashtableToString -Hashtable $PSBoundParameters)"
 
-    $TestResult = Test-M365DSCParameterState -CurrentValues $CurrentValues `
+    $TestResult = Test-Microsoft365DSCParameterState -CurrentValues $CurrentValues `
         -Source $($MyInvocation.MyCommand.Source) `
         -DesiredValues $PSBoundParameters `
         -ValuesToCheck @("BlockMacSync", `
@@ -532,96 +444,33 @@ function Export-TargetResource
     [OutputType([System.String])]
     param
     (
-        [Parameter()]
+        [Parameter(Mandatory = $true)]
         [System.Management.Automation.PSCredential]
-        $GlobalAdminAccount,
-
-        [Parameter()]
-        [System.String]
-        $ApplicationId,
-
-        [Parameter()]
-        [System.String]
-        $TenantId,
-
-        [Parameter()]
-        [System.String]
-        $CertificatePath,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential]
-        $CertificatePassword,
-
-        [Parameter()]
-        [System.String]
-        $CertificateThumbprint
+        $GlobalAdminAccount
     )
+    $InformationPReference = 'Continue'
+
     #region Telemetry
-    $ResourceName = $MyInvocation.MyCommand.ModuleName.Replace("MSFT_", "")
     $data = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $data.Add("Resource", $ResourceName)
+    $data.Add("Resource", $MyInvocation.MyCommand.ModuleName)
     $data.Add("Method", $MyInvocation.MyCommand)
-    $data.Add("Principal", $GlobalAdminAccount.UserName)
-    $data.Add("TenantId", $TenantId)
     Add-M365DSCTelemetryEvent -Data $data
     #endregion
-
-    $ConnectionMode = New-M365DSCConnection -Platform 'PnP' `
-        -InboundParameters $PSBoundParameters
-
-    try
-    {
-        $Params = @{
-            IsSingleInstance      = 'Yes'
-            ApplicationId         = $ApplicationId
-            TenantId              = $TenantId
-            CertificatePassword   = $CertificatePassword
-            CertificatePath       = $CertificatePath
-            CertificateThumbprint = $CertificateThumbprint
-            GlobalAdminAccount    = $GlobalAdminAccount
-        }
-
-        $Results = Get-TargetResource @Params
-
-        if ([System.String]::IsNullOrEmpty($Results.GrooveBlockOption))
-        {
-            $Results.Remove("GrooveBlockOption") | Out-Null
-        }
-
-        $Results = Update-M365DSCExportAuthenticationResults -ConnectionMode $ConnectionMode `
-            -Results $Results
-        $dscContent += Get-M365DSCExportContentForResource -ResourceName $ResourceName `
-            -ConnectionMode $ConnectionMode `
-            -ModulePath $PSScriptRoot `
-            -Results $Results `
-            -GlobalAdminAccount $GlobalAdminAccount
-        Write-Host $Global:M365DSCEmojiGreenCheckMark
-        return $dscContent
+    Test-MSCloudLogin -CloudCredential $GlobalAdminAccount `
+        -Platform SharePointOnline `
+        -ErrorAction SilentlyContinue
+    $Params = @{
+        IsSingleInstance   = 'Yes'
+        GlobalAdminAccount = $GlobalAdminAccount
     }
-    catch
-    {
-        try
-        {
-            Write-Verbose -Message $_
-            $tenantIdValue = ""
-            if (-not [System.String]::IsNullOrEmpty($TenantId))
-            {
-                $tenantIdValue = $TenantId
-            }
-            elseif ($null -ne $GlobalAdminAccount)
-            {
-                $tenantIdValue = $GlobalAdminAccount.UserName.Split('@')[1]
-            }
-            Add-M365DSCEvent -Message $_ -EntryType 'Error' `
-                -EventID 1 -Source $($MyInvocation.MyCommand.Source) `
-                -TenantId $tenantIdValue
-        }
-        catch
-        {
-            Write-Verbose -Message $_
-        }
-        return ""
-    }
+    $result = Get-TargetResource @Params
+    $result.GlobalAdminAccount = Resolve-Credentials -UserName "globaladmin"
+    $content = "        ODSettings " + (New-GUID).ToString() + "`r`n"
+    $content += "        {`r`n"
+    $currentDSCBlock = Get-DSCBlock -Params $result -ModulePath $PSScriptRoot
+    $content += Convert-DSCStringParamToVariable -DSCBlock $currentDSCBlock -ParameterName "GlobalAdminAccount"
+    $content += "        }`r`n"
+    return $content
 }
 
 Export-ModuleMember -Function *-TargetResource
